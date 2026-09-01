@@ -10,8 +10,12 @@ class EventType(StrEnum):
     RUN_STARTED = "run_started"
     ACTION_PROPOSED = "action_proposed"
     TOOL_STARTED = "tool_started"
+    TOOL_ATTEMPT_STARTED = "tool_attempt_started"
+    RETRY_SCHEDULED = "retry_scheduled"
     TOOL_SUCCEEDED = "tool_succeeded"
     TOOL_FAILED = "tool_failed"
+    TOOL_TIMED_OUT = "tool_timed_out"
+    TOOL_CANCELLED = "tool_cancelled"
     RUN_FINISHED = "run_finished"
 
 

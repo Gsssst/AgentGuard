@@ -31,6 +31,15 @@ class InvalidRouter:
         return {"type": "tool_call", "tool_name": "echo"}
 
 
+class TimeoutFallbackRouter:
+    async def next_action(self, state: RunState):
+        if state.step == 0:
+            return CallTool("slow", {})
+        if state.last_result.status is ToolResultStatus.TIMED_OUT:
+            return CallTool("fallback", {})
+        return Finish("fallback_succeeded")
+
+
 @pytest.mark.asyncio
 async def test_runtime_completes_echo_then_finish() -> None:
     async def echo(text: str) -> str:
@@ -52,6 +61,7 @@ async def test_runtime_completes_echo_then_finish() -> None:
         EventType.RUN_STARTED,
         EventType.ACTION_PROPOSED,
         EventType.TOOL_STARTED,
+        EventType.TOOL_ATTEMPT_STARTED,
         EventType.TOOL_SUCCEEDED,
         EventType.ACTION_PROPOSED,
         EventType.RUN_FINISHED,
@@ -121,3 +131,29 @@ async def test_runtime_bounds_router_that_never_finishes() -> None:
     assert result.status is RunStatus.FAILED
     assert result.stop_reason is StopReason.STEP_BUDGET_EXCEEDED
     assert result.final_state.step == 2
+
+
+@pytest.mark.asyncio
+async def test_timeout_is_an_observation_router_can_handle_with_fallback() -> None:
+    async def slow() -> None:
+        import asyncio
+
+        await asyncio.sleep(10)
+
+    async def fallback() -> str:
+        return "recovered"
+
+    registry = ToolRegistry()
+    registry.register("slow", slow, timeout=0.001)
+    registry.register("fallback", fallback)
+    sink = InMemoryEventSink()
+    result = await Runtime(
+        ToolExecutor(registry),
+        max_steps=4,
+        event_sink=sink,
+    ).run(TimeoutFallbackRouter(), RunState("run-timeout-fallback"))
+
+    assert result.status is RunStatus.COMPLETED
+    assert result.stop_reason is StopReason.COMPLETED
+    assert result.final_state.last_result.value == "recovered"
+    assert EventType.TOOL_TIMED_OUT in [event.event_type for event in sink.events]

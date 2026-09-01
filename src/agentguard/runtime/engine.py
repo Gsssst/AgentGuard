@@ -65,7 +65,10 @@ class Runtime:
                 return self._finish(state, RunStatus.COMPLETED, StopReason.COMPLETED)
 
             self._emit(EventType.TOOL_STARTED, state, tool_name=action.tool_name)
-            tool_result = await self.executor.execute(action)
+            tool_result = await self.executor.execute(
+                action,
+                on_event=lambda event_type, data: self._emit(event_type, state, **data),
+            )
             state.record(action, tool_result)
             state.step += 1
 
@@ -75,6 +78,23 @@ class Runtime:
                     state,
                     tool_name=tool_result.tool_name,
                     value=tool_result.value,
+                    attempts=tool_result.attempts,
+                )
+            elif tool_result.status is ToolResultStatus.TIMED_OUT:
+                self._emit(
+                    EventType.TOOL_TIMED_OUT,
+                    state,
+                    tool_name=tool_result.tool_name,
+                    attempts=tool_result.attempts,
+                    timeout_seconds=tool_result.timeout_seconds,
+                    timeout_source=tool_result.timeout_source,
+                )
+            elif tool_result.status is ToolResultStatus.CANCELLED:
+                self._emit(
+                    EventType.TOOL_CANCELLED,
+                    state,
+                    tool_name=tool_result.tool_name,
+                    attempts=tool_result.attempts,
                 )
             else:
                 self._emit(
@@ -83,10 +103,18 @@ class Runtime:
                     tool_name=tool_result.tool_name,
                     error_type=tool_result.error_type,
                     error_message=tool_result.error_message,
+                    failure_kind=(
+                        tool_result.failure_kind.value
+                        if tool_result.failure_kind is not None
+                        else None
+                    ),
+                    attempts=tool_result.attempts,
                 )
 
             if tool_result.error_type == "UnknownTool":
                 return self._finish(state, RunStatus.FAILED, StopReason.INVALID_ACTION)
+            if tool_result.status is ToolResultStatus.TIMED_OUT:
+                continue
             if tool_result.status is not ToolResultStatus.SUCCESS:
                 return self._finish(state, RunStatus.FAILED, StopReason.TOOL_FAILED)
 
