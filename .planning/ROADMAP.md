@@ -25,5 +25,15 @@ Explore approval state, audit, resource locks, conflict policies, LangGraph/Pi a
 - **V0.1 Runtime Reliability Core**: Phases 1–3
 - **V0.2 Recovery and Evaluation**: Phase 4, after V0.1 evidence supports expansion
 
+### Phase 4: Recovery and Evaluation (v0.2 candidate): checkpoint/resume, crash simulation, duplicate execution, scenario registry, benchmark metrics, and recovery reports
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 3
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 4 to break down)
+
 ---
 *Roadmap created: 2026-08-31*

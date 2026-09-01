@@ -5,7 +5,7 @@
 See: `.planning/PROJECT.md` (updated 2026-08-31)
 
 **Core value:** An Agent Runtime must terminate, remain bounded, and leave enough evidence to explain what happened when tools fail or the agent repeats itself.
-**Current focus:** Phase 3 implemented locally; review and commit evidence
+**Current focus:** Phase 4 context captured; checkpoint/recovery planning is next
 
 ## Current Position
 
@@ -15,7 +15,8 @@ See: `.planning/PROJECT.md` (updated 2026-08-31)
 - Phase 2 Tool failure boundaries committed.
 - Phase 3 loop guard and reliability reporting implemented locally.
 - 53 automated tests pass.
-- Next action: human review and commit of Phase 3, then discuss/plan checkpoint and recovery.
+- V0.1 acceptance and Phase 3 learning extraction completed.
+- Phase 4 checkpoint/recovery and reliability evaluation decisions captured; planning is next.
 
 ## Session Continuity
 
