@@ -27,13 +27,15 @@ Explore approval state, audit, resource locks, conflict policies, LangGraph/Pi a
 
 ### Phase 4: Recovery and Evaluation (v0.2 candidate): checkpoint/resume, crash simulation, duplicate execution, scenario registry, benchmark metrics, and recovery reports
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Add an inspectable local checkpoint/resume path with deterministic crash simulation, explicit at-least-once recovery evidence, and a shared reliability evaluation harness.
+**Requirements**: CHECKPOINT-01, CHECKPOINT-02, RECOVERY-01, RECOVERY-02, RECOVERY-03, EVAL-01, EVAL-02
 **Depends on:** Phase 3
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 4 to break down)
+- [ ] 04-01 — checkpoint model, codec, and atomic local store
+- [ ] 04-02 — Runtime checkpoint hooks, crash simulation, resume, and recovery reporting
+- [ ] 04-03 — scenario registry, evaluation runner, and bilingual learning notes
 
 ---
 *Roadmap created: 2026-08-31*
