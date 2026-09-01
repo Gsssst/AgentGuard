@@ -16,6 +16,7 @@ class EventType(StrEnum):
     TOOL_FAILED = "tool_failed"
     TOOL_TIMED_OUT = "tool_timed_out"
     TOOL_CANCELLED = "tool_cancelled"
+    LOOP_DETECTED = "loop_detected"
     RUN_FINISHED = "run_finished"
 
 

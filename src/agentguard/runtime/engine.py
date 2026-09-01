@@ -11,6 +11,7 @@ from agentguard.events.model import EventType, RuntimeEvent
 from agentguard.events.sinks import EventSink, InMemoryEventSink
 
 from .router import Router
+from .loop_guard import LoopGuard
 from .tool import ToolExecutor
 
 
@@ -21,12 +22,15 @@ class Runtime:
     executor: ToolExecutor
     max_steps: int = 10
     event_sink: EventSink | None = None
+    loop_guard: LoopGuard | None = None
 
     def __post_init__(self) -> None:
         if self.max_steps <= 0:
             raise ValueError("max_steps must be positive")
         if self.event_sink is None:
             self.event_sink = InMemoryEventSink()
+        if self.loop_guard is None:
+            self.loop_guard = LoopGuard()
 
     async def run(self, router: Router, state: RunState | None = None) -> RunResult:
         """Run one state-driven, sequential Action loop."""
@@ -63,6 +67,18 @@ class Runtime:
                 state.record(action)
                 state.step += 1
                 return self._finish(state, RunStatus.COMPLETED, StopReason.COMPLETED)
+
+            assert self.loop_guard is not None
+            loop_detected, signature, consecutive_count = self.loop_guard.observe(action)
+            if loop_detected:
+                self._emit(
+                    EventType.LOOP_DETECTED,
+                    state,
+                    signature=signature,
+                    consecutive_count=consecutive_count,
+                    threshold=self.loop_guard.threshold,
+                )
+                return self._finish(state, RunStatus.FAILED, StopReason.LOOP_DETECTED)
 
             self._emit(EventType.TOOL_STARTED, state, tool_name=action.tool_name)
             tool_result = await self.executor.execute(

@@ -18,6 +18,7 @@ class StopReason(StrEnum):
     INVALID_ACTION = "invalid_action"
     STEP_BUDGET_EXCEEDED = "step_budget_exceeded"
     TOOL_FAILED = "tool_failed"
+    LOOP_DETECTED = "loop_detected"
 
 
 @dataclass(frozen=True)

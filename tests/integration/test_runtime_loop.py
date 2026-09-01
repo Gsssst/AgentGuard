@@ -134,6 +134,33 @@ async def test_runtime_bounds_router_that_never_finishes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_loop_guard_stops_before_third_repeated_tool_execution() -> None:
+    calls = 0
+
+    async def echo(value: int) -> int:
+        nonlocal calls
+        calls += 1
+        return value
+
+    class RepeatingRouter:
+        async def next_action(self, state: RunState):
+            return CallTool("echo", {"value": 1})
+
+    sink = InMemoryEventSink()
+    result = await Runtime(
+        ToolExecutor(ToolRegistry({"echo": echo})),
+        max_steps=10,
+        event_sink=sink,
+    ).run(RepeatingRouter(), RunState("run-loop"))
+
+    assert result.status is RunStatus.FAILED
+    assert result.stop_reason is StopReason.LOOP_DETECTED
+    assert calls == 2
+    assert sink.events[-2].event_type is EventType.LOOP_DETECTED
+    assert sink.events[-1].event_type is EventType.RUN_FINISHED
+
+
+@pytest.mark.asyncio
 async def test_timeout_is_an_observation_router_can_handle_with_fallback() -> None:
     async def slow() -> None:
         import asyncio
