@@ -33,7 +33,7 @@ Explore approval state, audit, resource locks, conflict policies, LangGraph/Pi a
 **Plans:** 3 plans
 
 Plans:
-- [ ] 04-01 — checkpoint model, codec, and atomic local store
+- [x] 04-01 — checkpoint model, codec, and atomic local store
 - [ ] 04-02 — Runtime checkpoint hooks, crash simulation, resume, and recovery reporting
 - [ ] 04-03 — scenario registry, evaluation runner, and bilingual learning notes
 

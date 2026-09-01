@@ -9,10 +9,35 @@ from .runtime.policy import RetryPolicy, RetrySafety
 from .runtime.loop_guard import LoopGuard, action_signature
 from .reporting import ReliabilityReport, build_report
 from .events import EventType, InMemoryEventSink, JsonlEventSink, RuntimeEvent
+from .checkpoint import (
+    Checkpoint,
+    CheckpointCorruptError,
+    CheckpointError,
+    CheckpointLifecycle,
+    CheckpointSerializationError,
+    CheckpointStore,
+    CheckpointValidationError,
+    UnsupportedCheckpointVersionError,
+    decode_checkpoint,
+    dumps_checkpoint,
+    encode_checkpoint,
+    loads_checkpoint,
+)
 
 __all__ = [
     "Action",
     "CallTool",
+    "Checkpoint",
+    "CheckpointCorruptError",
+    "CheckpointError",
+    "CheckpointLifecycle",
+    "CheckpointSerializationError",
+    "CheckpointStore",
+    "CheckpointValidationError",
+    "decode_checkpoint",
+    "dumps_checkpoint",
+    "encode_checkpoint",
+    "loads_checkpoint",
     "Finish",
     "FailureKind",
     "RunResult",
@@ -21,6 +46,7 @@ __all__ = [
     "StopReason",
     "ToolResult",
     "ToolResultStatus",
+    "UnsupportedCheckpointVersionError",
     "Runtime",
     "EventType",
     "InMemoryEventSink",

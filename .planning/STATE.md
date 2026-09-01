@@ -5,7 +5,7 @@
 See: `.planning/PROJECT.md` (updated 2026-08-31)
 
 **Core value:** An Agent Runtime must terminate, remain bounded, and leave enough evidence to explain what happened when tools fail or the agent repeats itself.
-**Current focus:** Phase 4 plans drafted; implementation review and execution are next
+**Current focus:** Phase 4 Wave 1 complete; Runtime resume integration is next
 
 ## Current Position
 
@@ -18,6 +18,7 @@ See: `.planning/PROJECT.md` (updated 2026-08-31)
 - V0.1 acceptance and Phase 3 learning extraction completed.
 - Phase 4 checkpoint/recovery and reliability evaluation decisions captured.
 - Phase 4 research, pattern mapping, and three-wave implementation plans drafted.
+- Phase 4 Plan 04-01 checkpoint foundation implemented; 61 tests pass.
 
 ## Session Continuity
 
