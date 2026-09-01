@@ -44,6 +44,9 @@ async def test_report_combines_terminal_summary_events_and_metrics() -> None:
     assert report.failed_tool_calls == 0
     assert report.retry_count == 0
     assert report.evidence_consistent is True
+    assert report.checkpoint_writes == 0
+    assert report.recovery_attempts == 0
+    assert report.recovery_success is False
     assert report.to_dict()["events"][-1]["event_type"] == "run_finished"
 
 
@@ -88,3 +91,25 @@ def test_report_counts_retry_and_loop_events() -> None:
     assert report.retry_count == 1
     assert report.loop_detected is True
     assert report.evidence_consistent is True
+
+
+def test_report_counts_recovery_and_duplicate_evidence() -> None:
+    result = __import__("agentguard").RunResult(
+        run_id="run-001",
+        status=RunStatus.COMPLETED,
+        stop_reason=StopReason.COMPLETED,
+        final_state=RunState("run-001", step=2),
+    )
+    events = [
+        RuntimeEvent(EventType.RESUME_STARTED, "run-001", 1, {"resume_attempt": 1, "duplicate_possible": True}),
+        RuntimeEvent(EventType.TOOL_STARTED, "run-001", 1, {"resume_attempt": 1, "duplicate_possible": True}),
+        RuntimeEvent(EventType.RUN_FINISHED, "run-001", 2, {"status": "completed", "stop_reason": "completed"}),
+    ]
+
+    report = build_report(result, events)
+
+    assert report.recovery_attempts == 1
+    assert report.recovery_success is True
+    assert report.duplicate_possible_tool_executions == 1
+    assert report.crash_to_recovery_steps == 1
+    assert report.final_state_correct is None

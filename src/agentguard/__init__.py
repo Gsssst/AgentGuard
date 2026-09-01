@@ -4,7 +4,7 @@ from .domain.actions import Action, CallTool, Finish
 from .domain.results import FailureKind, ToolResult, ToolResultStatus
 from .domain.runtime import RunResult
 from .domain.state import RunState, RunStatus, StopReason
-from .runtime.engine import Runtime
+from .runtime.engine import Runtime, SimulatedCrash
 from .runtime.policy import RetryPolicy, RetrySafety
 from .runtime.loop_guard import LoopGuard, action_signature
 from .reporting import ReliabilityReport, build_report
@@ -48,6 +48,7 @@ __all__ = [
     "ToolResultStatus",
     "UnsupportedCheckpointVersionError",
     "Runtime",
+    "SimulatedCrash",
     "EventType",
     "InMemoryEventSink",
     "JsonlEventSink",

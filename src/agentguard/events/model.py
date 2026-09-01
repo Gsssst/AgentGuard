@@ -17,6 +17,10 @@ class EventType(StrEnum):
     TOOL_TIMED_OUT = "tool_timed_out"
     TOOL_CANCELLED = "tool_cancelled"
     LOOP_DETECTED = "loop_detected"
+    CHECKPOINT_WRITTEN = "checkpoint_written"
+    RESUME_STARTED = "resume_started"
+    DUPLICATE_POSSIBLE = "duplicate_possible"
+    RECOVERY_REJECTED = "recovery_rejected"
     RUN_FINISHED = "run_finished"
 
 
