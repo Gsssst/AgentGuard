@@ -23,6 +23,7 @@ from .checkpoint import (
     encode_checkpoint,
     loads_checkpoint,
 )
+from .evaluation import DEFAULT_SCENARIOS, ScenarioDefinition, ScenarioInstance, ScenarioRegistry, run_all, run_scenario
 
 __all__ = [
     "Action",
@@ -38,6 +39,12 @@ __all__ = [
     "dumps_checkpoint",
     "encode_checkpoint",
     "loads_checkpoint",
+    "DEFAULT_SCENARIOS",
+    "ScenarioDefinition",
+    "ScenarioInstance",
+    "ScenarioRegistry",
+    "run_all",
+    "run_scenario",
     "Finish",
     "FailureKind",
     "RunResult",
