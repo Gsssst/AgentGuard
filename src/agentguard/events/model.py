@@ -21,6 +21,10 @@ class EventType(StrEnum):
     RESUME_STARTED = "resume_started"
     DUPLICATE_POSSIBLE = "duplicate_possible"
     RECOVERY_REJECTED = "recovery_rejected"
+    PERMISSION_DENIED = "permission_denied"
+    APPROVAL_REQUESTED = "approval_requested"
+    APPROVAL_GRANTED = "approval_granted"
+    APPROVAL_DENIED = "approval_denied"
     RUN_FINISHED = "run_finished"
 
 

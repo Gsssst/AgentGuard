@@ -2,7 +2,7 @@
 
 import asyncio
 import inspect
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,6 +11,7 @@ from agentguard.domain.results import FailureKind, ToolResult, ToolResultStatus
 from agentguard.events.model import EventType
 
 from .policy import RetryPolicy, RetrySafety, classify_exception
+from .permission import normalize_capabilities
 
 ToolCallable = Callable[..., Any]
 ToolEventCallback = Callable[[EventType, dict[str, Any]], None]
@@ -37,6 +38,7 @@ class Tool:
     function: ToolCallable
     timeout: float | None = None
     retry_safety: RetrySafety = RetrySafety.UNKNOWN
+    capabilities: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -45,6 +47,7 @@ class Tool:
             raise TypeError("tool function must be callable")
         if self.timeout is not None and self.timeout <= 0:
             raise ValueError("tool timeout must be positive")
+        object.__setattr__(self, "capabilities", normalize_capabilities(self.capabilities))
 
 
 class ToolRegistry:
@@ -62,12 +65,14 @@ class ToolRegistry:
         *,
         timeout: float | None = None,
         retry_safety: RetrySafety = RetrySafety.UNKNOWN,
+        capabilities: Iterable[str] = (),
     ) -> None:
         self._tools[name] = Tool(
             name=name,
             function=function,
             timeout=timeout,
             retry_safety=retry_safety,
+            capabilities=capabilities,
         )
 
     def get(self, name: str) -> Tool | None:
@@ -89,6 +94,11 @@ class ToolExecutor:
         self._registry = registry
         self._default_timeout = default_timeout
         self._retry_policy = retry_policy or RetryPolicy()
+
+    def get_tool(self, name: str) -> Tool | None:
+        """Return registered metadata without invoking the Tool."""
+
+        return self._registry.get(name)
 
     async def execute(
         self,

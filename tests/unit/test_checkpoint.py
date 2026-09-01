@@ -16,6 +16,7 @@ from agentguard import (
     ToolResultStatus,
     dumps_checkpoint,
     loads_checkpoint,
+    compute_action_digest,
 )
 
 
@@ -77,3 +78,34 @@ def test_checkpoint_validates_lifecycle_and_run_id() -> None:
     checkpoint.lifecycle = CheckpointLifecycle.COMPLETED
     assert checkpoint.lifecycle is CheckpointLifecycle.COMPLETED
 
+
+def test_waiting_approval_checkpoint_round_trip_preserves_pending_binding() -> None:
+    action = CallTool("send", {"to": "user@example.com"})
+    state = RunState("run-approval", status=RunStatus.WAITING_APPROVAL)
+    digest = compute_action_digest(
+        tool_name=action.tool_name,
+        arguments=action.arguments,
+        capabilities={"external", "write"},
+        run_id=state.run_id,
+        step=state.step,
+    )
+    checkpoint = Checkpoint(
+        run_id=state.run_id,
+        state=state,
+        max_steps=3,
+        pending_action=action,
+        pending_capabilities={"external", "write"},
+        action_digest=digest,
+    )
+
+    restored = loads_checkpoint(dumps_checkpoint(checkpoint))
+    assert restored.state.status is RunStatus.WAITING_APPROVAL
+    assert restored.pending_action == action
+    assert restored.pending_capabilities == frozenset({"external", "write"})
+    assert restored.action_digest == digest
+
+
+def test_waiting_approval_checkpoint_requires_binding_metadata() -> None:
+    state = RunState("run-approval", status=RunStatus.WAITING_APPROVAL)
+    with pytest.raises(CheckpointValidationError):
+        Checkpoint("run-approval", state, max_steps=3)

@@ -2,10 +2,25 @@
 
 from .domain.actions import Action, CallTool, Finish
 from .domain.results import FailureKind, ToolResult, ToolResultStatus
-from .domain.runtime import RunResult
+from .domain.runtime import RunPause, RunResult
 from .domain.state import RunState, RunStatus, StopReason
 from .runtime.engine import Runtime, SimulatedCrash
 from .runtime.policy import RetryPolicy, RetrySafety
+from .runtime.permission import (
+    ApprovalDecision,
+    Capability,
+    KNOWN_CAPABILITIES,
+    PermissionDecision,
+    PermissionDecisionKind,
+    PermissionDenied,
+    PermissionPolicy,
+    PermissionOutcome,
+    action_digest,
+    canonicalize,
+    compute_action_digest,
+    redact,
+    redact_arguments,
+)
 from .runtime.loop_guard import LoopGuard, action_signature
 from .reporting import ReliabilityReport, build_report
 from .events import EventType, InMemoryEventSink, JsonlEventSink, RuntimeEvent
@@ -48,6 +63,7 @@ __all__ = [
     "Finish",
     "FailureKind",
     "RunResult",
+    "RunPause",
     "RunState",
     "RunStatus",
     "StopReason",
@@ -62,6 +78,19 @@ __all__ = [
     "RuntimeEvent",
     "RetryPolicy",
     "RetrySafety",
+    "Capability",
+    "KNOWN_CAPABILITIES",
+    "PermissionPolicy",
+    "PermissionDecision",
+    "PermissionDecisionKind",
+    "PermissionOutcome",
+    "PermissionDenied",
+    "ApprovalDecision",
+    "action_digest",
+    "canonicalize",
+    "compute_action_digest",
+    "redact",
+    "redact_arguments",
     "LoopGuard",
     "action_signature",
     "ReliabilityReport",

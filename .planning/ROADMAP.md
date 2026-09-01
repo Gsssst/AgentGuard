@@ -37,5 +37,15 @@ Plans:
 - [x] 04-02 — Runtime checkpoint hooks, crash simulation, resume, and recovery reporting
 - [x] 04-03 — scenario registry, evaluation runner, and bilingual learning notes
 
+### Phase 5: Permission Control and Approval Boundaries
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 4
+**Plans:** 0/3 plans executed
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 5 to break down)
+
 ---
 *Roadmap created: 2026-08-31*

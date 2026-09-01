@@ -9,6 +9,7 @@ from .results import ToolResult
 
 class RunStatus(StrEnum):
     RUNNING = "running"
+    WAITING_APPROVAL = "waiting_approval"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -19,6 +20,7 @@ class StopReason(StrEnum):
     STEP_BUDGET_EXCEEDED = "step_budget_exceeded"
     TOOL_FAILED = "tool_failed"
     LOOP_DETECTED = "loop_detected"
+    PERMISSION_DENIED = "permission_denied"
 
 
 @dataclass(frozen=True)

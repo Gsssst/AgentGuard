@@ -104,6 +104,13 @@ def test_run_result_requires_terminal_consistent_state() -> None:
     with pytest.raises(ValueError):
         RunResult(
             run_id="run-001",
+            status=RunStatus.WAITING_APPROVAL,
+            stop_reason=StopReason.PERMISSION_DENIED,
+            final_state=state,
+        )
+    with pytest.raises(ValueError):
+        RunResult(
+            run_id="run-001",
             status=RunStatus.FAILED,
             stop_reason=StopReason.COMPLETED,
             final_state=state,

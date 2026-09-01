@@ -6,7 +6,7 @@ from typing import Callable
 from typing import Any
 
 from agentguard.domain.actions import Action, CallTool, Finish
-from agentguard.domain.runtime import RunResult
+from agentguard.domain.runtime import RunPause, RunResult
 from agentguard.domain.results import ToolResultStatus
 from agentguard.domain.state import RunState, RunStatus, StopReason
 from agentguard.events.model import EventType, RuntimeEvent
@@ -16,6 +16,7 @@ from agentguard.checkpoint import Checkpoint, CheckpointLifecycle, CheckpointSto
 from .router import Router
 from .loop_guard import LoopGuard
 from .tool import ToolExecutor
+from .permission import ApprovalDecision, PermissionDecisionKind, PermissionPolicy, action_digest, redact
 
 
 class SimulatedCrash(RuntimeError):
@@ -38,6 +39,7 @@ class Runtime:
     crash_hook: CrashHook | None = None
     resume_attempt: int = 0
     duplicate_possible: bool = False
+    permission_policy: PermissionPolicy | None = None
     _event_sequence: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -52,7 +54,15 @@ class Runtime:
         if self.checkpoint_store is None and self.checkpoint_path is not None:
             self.checkpoint_store = CheckpointStore(Path(self.checkpoint_path).parent)
 
-    async def run(self, router: Router, state: RunState | None = None) -> RunResult:
+    async def run(
+        self,
+        router: Router,
+        state: RunState | None = None,
+        *,
+        _pending_action: CallTool | None = None,
+        _pending_capabilities: frozenset[str] = frozenset(),
+        _skip_permission_once: bool = False,
+    ) -> RunResult | RunPause:
         """Run one state-driven, sequential Action loop."""
 
         state = state or RunState(run_id="run-001")
@@ -64,12 +74,16 @@ class Runtime:
             if state.step >= self.max_steps:
                 return self._finish(state, RunStatus.FAILED, StopReason.STEP_BUDGET_EXCEEDED)
 
-            try:
-                action: Any = await router.next_action(state)
-            except Exception:
-                # Router failures are treated as invalid decisions at this
-                # stage; later phases may introduce a dedicated reason.
-                return self._finish(state, RunStatus.FAILED, StopReason.INVALID_ACTION)
+            if _pending_action is not None:
+                action = _pending_action
+                _pending_action = None
+            else:
+                try:
+                    action = await router.next_action(state)
+                except Exception:
+                    # Router failures are treated as invalid decisions at this
+                    # stage; later phases may introduce a dedicated reason.
+                    return self._finish(state, RunStatus.FAILED, StopReason.INVALID_ACTION)
 
             if not isinstance(action, (CallTool, Finish)):
                 return self._finish(state, RunStatus.FAILED, StopReason.INVALID_ACTION)
@@ -79,7 +93,7 @@ class Runtime:
                 state,
                 action_type=type(action).__name__,
                 **(
-                    {"tool_name": action.tool_name, "arguments": action.arguments}
+                    {"tool_name": action.tool_name, "arguments": redact(action.arguments)}
                     if isinstance(action, CallTool)
                     else {"reason": action.reason}
                 ),
@@ -89,6 +103,55 @@ class Runtime:
                 state.record(action)
                 state.step += 1
                 return self._finish(state, RunStatus.COMPLETED, StopReason.COMPLETED)
+
+            if self.permission_policy is not None and not _skip_permission_once:
+                tool = self.executor.get_tool(action.tool_name)
+                capabilities = tool.capabilities if tool is not None else frozenset()
+                decision = self.permission_policy.decide(capabilities)
+                if decision.kind is PermissionDecisionKind.DENY:
+                    self._emit(
+                        EventType.PERMISSION_DENIED,
+                        state,
+                        tool_name=action.tool_name,
+                        required_capabilities=sorted(decision.required_capabilities),
+                        forbidden_capabilities=sorted(decision.forbidden_capabilities),
+                        decision=decision.kind.value,
+                    )
+                    return self._finish(state, RunStatus.FAILED, StopReason.PERMISSION_DENIED)
+                if decision.kind is PermissionDecisionKind.APPROVAL_REQUIRED:
+                    digest = action_digest(
+                        action,
+                        capabilities=capabilities,
+                        run_id=state.run_id,
+                        step=state.step,
+                    )
+                    state.status = RunStatus.WAITING_APPROVAL
+                    self._emit(
+                        EventType.APPROVAL_REQUESTED,
+                        state,
+                        tool_name=action.tool_name,
+                        required_capabilities=sorted(decision.required_capabilities),
+                        decision=decision.kind.value,
+                        action_digest=digest,
+                        arguments=redact(action.arguments),
+                        status=RunStatus.WAITING_APPROVAL.value,
+                    )
+                    self._save_checkpoint(
+                        state,
+                        CheckpointLifecycle.ACTIVE,
+                        pending_action=action,
+                        pending_capabilities=capabilities,
+                        action_digest=digest,
+                    )
+                    return RunPause(
+                        run_id=state.run_id,
+                        status=RunStatus.WAITING_APPROVAL,
+                        final_state=state,
+                        pending_action=action,
+                        action_digest=digest,
+                    )
+
+            _skip_permission_once = False
 
             assert self.loop_guard is not None
             loop_detected, signature, consecutive_count = self.loop_guard.observe(action)
@@ -165,7 +228,12 @@ class Runtime:
         # future status values are added.
         return self._finish(state, RunStatus.FAILED, StopReason.INVALID_ACTION)
 
-    async def resume(self, checkpoint_path: str | Path, router: Router) -> RunResult:
+    async def resume(
+        self,
+        checkpoint_path: str | Path,
+        router: Router,
+        approval: ApprovalDecision | None = None,
+    ) -> RunResult | RunPause:
         """Explicitly restore a checkpoint, then continue the same loop."""
 
         path = Path(checkpoint_path)
@@ -180,6 +248,37 @@ class Runtime:
         self._event_sequence = checkpoint.event_position
         if checkpoint.lifecycle in (CheckpointLifecycle.COMPLETED, CheckpointLifecycle.FAILED):
             raise ValueError("cannot resume a terminal checkpoint")
+        approval_granted = False
+        approval_denied = False
+        approval_tool_name: str | None = None
+        approval_capabilities: frozenset[str] = frozenset()
+        approval_expected_digest: str | None = None
+        if checkpoint.state.status is RunStatus.WAITING_APPROVAL:
+            if checkpoint.pending_action is None or checkpoint.action_digest is None:
+                raise ValueError("waiting checkpoint is missing pending approval metadata")
+            if approval is None:
+                raise ValueError("approval decision is required to resume a waiting checkpoint")
+            tool = self.executor.get_tool(checkpoint.pending_action.tool_name)
+            if tool is None:
+                raise ValueError("pending approval Tool is no longer registered")
+            expected = action_digest(
+                checkpoint.pending_action,
+                capabilities=tool.capabilities,
+                run_id=checkpoint.run_id,
+                step=checkpoint.state.step,
+            )
+            if expected != checkpoint.action_digest or approval.action_digest != expected:
+                raise ValueError("approval action digest does not match pending Action")
+            pending_action = checkpoint.pending_action
+            pending_capabilities = checkpoint.pending_capabilities
+            approval_granted = approval.approved
+            approval_denied = not approval.approved
+            approval_tool_name = checkpoint.pending_action.tool_name
+            approval_capabilities = checkpoint.pending_capabilities
+            approval_expected_digest = expected
+        else:
+            pending_action = None
+            pending_capabilities = frozenset()
         self._emit(
             EventType.RESUME_STARTED,
             checkpoint.state,
@@ -187,7 +286,36 @@ class Runtime:
             duplicate_possible=True,
             checkpoint_path=str(path),
         )
-        return await self.run(router, checkpoint.state)
+        if approval_denied:
+            checkpoint.state.status = RunStatus.FAILED
+            self._emit(
+                EventType.APPROVAL_DENIED,
+                checkpoint.state,
+                tool_name=approval_tool_name,
+                required_capabilities=sorted(approval_capabilities),
+                action_digest=approval_expected_digest,
+                actor=approval.actor if approval is not None else None,
+                reason=approval.reason if approval is not None else None,
+            )
+            return self._finish(checkpoint.state, RunStatus.FAILED, StopReason.PERMISSION_DENIED)
+        if approval_granted:
+            checkpoint.state.status = RunStatus.RUNNING
+            self._emit(
+                EventType.APPROVAL_GRANTED,
+                checkpoint.state,
+                tool_name=approval_tool_name,
+                required_capabilities=sorted(approval_capabilities),
+                action_digest=approval_expected_digest,
+                actor=approval.actor if approval is not None else None,
+                reason=approval.reason if approval is not None else None,
+            )
+        return await self.run(
+            router,
+            checkpoint.state,
+            _pending_action=pending_action,
+            _pending_capabilities=pending_capabilities,
+            _skip_permission_once=pending_action is not None,
+        )
 
     def _finish(self, state: RunState, status: RunStatus, reason: StopReason) -> RunResult:
         state.status = status
@@ -226,7 +354,15 @@ class Runtime:
             )
         )
 
-    def _save_checkpoint(self, state: RunState, lifecycle: CheckpointLifecycle) -> None:
+    def _save_checkpoint(
+        self,
+        state: RunState,
+        lifecycle: CheckpointLifecycle,
+        *,
+        pending_action: CallTool | None = None,
+        pending_capabilities: frozenset[str] = frozenset(),
+        action_digest: str | None = None,
+    ) -> None:
         if self.checkpoint_store is None:
             return
         checkpoint = Checkpoint(
@@ -236,6 +372,9 @@ class Runtime:
             event_position=self._event_sequence + (1 if lifecycle is CheckpointLifecycle.ACTIVE else 0),
             resume_attempt=self.resume_attempt,
             lifecycle=lifecycle,
+            pending_action=pending_action,
+            pending_capabilities=pending_capabilities,
+            action_digest=action_digest,
             duplicate_possible=self.duplicate_possible,
         )
         path = self.checkpoint_store.save(checkpoint, self.checkpoint_path)

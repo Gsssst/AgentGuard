@@ -26,6 +26,11 @@ class ReliabilityReport:
     duplicate_possible_tool_executions: int = 0
     crash_to_recovery_steps: int | None = None
     final_state_correct: bool | None = None
+    permission_denials: int = 0
+    approval_requests: int = 0
+    approval_grants: int = 0
+    approval_denials: int = 0
+    waiting_runs: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -46,6 +51,11 @@ class ReliabilityReport:
             "duplicate_possible_tool_executions": self.duplicate_possible_tool_executions,
             "crash_to_recovery_steps": self.crash_to_recovery_steps,
             "final_state_correct": self.final_state_correct,
+            "permission_denials": self.permission_denials,
+            "approval_requests": self.approval_requests,
+            "approval_grants": self.approval_grants,
+            "approval_denials": self.approval_denials,
+            "waiting_runs": self.waiting_runs,
         }
 
 
@@ -84,6 +94,15 @@ def build_report(result: RunResult, events: Iterable[RuntimeEvent]) -> Reliabili
     )
     resume_event = next((event for event in event_list if event.event_type is EventType.RESUME_STARTED), None)
     crash_to_recovery_steps = resume_event.step if resume_event is not None else None
+    permission_denials = sum(event.event_type is EventType.PERMISSION_DENIED for event in event_list)
+    approval_requests = sum(event.event_type is EventType.APPROVAL_REQUESTED for event in event_list)
+    approval_grants = sum(event.event_type is EventType.APPROVAL_GRANTED for event in event_list)
+    approval_denials = sum(event.event_type is EventType.APPROVAL_DENIED for event in event_list)
+    waiting_runs = sum(
+        event.event_type is EventType.APPROVAL_REQUESTED
+        and event.data.get("status") == "waiting_approval"
+        for event in event_list
+    )
 
     return ReliabilityReport(
         run_id=result.run_id,
@@ -102,4 +121,9 @@ def build_report(result: RunResult, events: Iterable[RuntimeEvent]) -> Reliabili
         recovery_success=recovery_success,
         duplicate_possible_tool_executions=duplicate_possible_tool_executions,
         crash_to_recovery_steps=crash_to_recovery_steps,
+        permission_denials=permission_denials,
+        approval_requests=approval_requests,
+        approval_grants=approval_grants,
+        approval_denials=approval_denials,
+        waiting_runs=waiting_runs,
     )

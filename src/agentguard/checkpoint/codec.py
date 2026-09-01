@@ -9,6 +9,7 @@ from typing import Any
 from agentguard.domain.actions import Action, CallTool, Finish
 from agentguard.domain.results import FailureKind, ToolResult, ToolResultStatus
 from agentguard.domain.state import HistoryEntry, RunState, RunStatus
+from agentguard.runtime.permission import ApprovalDecision, normalize_capabilities
 
 from .model import (
     Checkpoint,
@@ -198,8 +199,40 @@ def encode_checkpoint(checkpoint: Checkpoint) -> dict[str, Any]:
         "resume_attempt": checkpoint.resume_attempt,
         "pending_action": _encode_action(checkpoint.pending_action),
         "pending_result": _encode_result(checkpoint.pending_result, field="pending_result"),
+        "pending_capabilities": sorted(checkpoint.pending_capabilities),
+        "action_digest": checkpoint.action_digest,
+        "approval_decision": _encode_approval_decision(checkpoint.approval_decision),
         "duplicate_possible": checkpoint.duplicate_possible,
     }
+
+
+def _encode_approval_decision(decision: ApprovalDecision | None) -> dict[str, Any] | None:
+    if decision is None:
+        return None
+    return {
+        "approved": decision.approved,
+        "actor": decision.actor,
+        "reason": decision.reason,
+        "action_digest": decision.action_digest,
+    }
+
+
+def _decode_approval_decision(raw: Any, *, field: str) -> ApprovalDecision | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise CheckpointValidationError(f"{field} must be an object or null")
+    for key in ("approved", "actor", "reason", "action_digest"):
+        _require(raw, key, field)
+    try:
+        return ApprovalDecision(
+            approved=raw["approved"],
+            actor=raw["actor"],
+            reason=raw["reason"],
+            action_digest=raw["action_digest"],
+        )
+    except (TypeError, ValueError) as exc:
+        raise CheckpointValidationError(f"invalid {field}: {exc}") from exc
 
 
 def decode_checkpoint(raw: Any) -> Checkpoint:
@@ -234,6 +267,11 @@ def decode_checkpoint(raw: Any) -> Checkpoint:
             lifecycle=lifecycle,
             pending_action=_decode_action(raw["pending_action"], field="checkpoint.pending_action"),
             pending_result=_decode_result(raw["pending_result"], field="checkpoint.pending_result"),
+            pending_capabilities=raw.get("pending_capabilities", []),
+            action_digest=raw.get("action_digest"),
+            approval_decision=_decode_approval_decision(
+                raw.get("approval_decision"), field="checkpoint.approval_decision"
+            ),
             duplicate_possible=raw["duplicate_possible"],
             schema_version=version,
         )
@@ -258,4 +296,3 @@ def loads_checkpoint(text: str) -> Checkpoint:
     except json.JSONDecodeError as exc:
         raise CheckpointCorruptError(str(exc)) from exc
     return decode_checkpoint(raw)
-
