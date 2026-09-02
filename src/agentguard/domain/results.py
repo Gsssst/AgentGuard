@@ -16,6 +16,7 @@ class FailureKind(StrEnum):
     PERMANENT = "permanent"
     TIMEOUT = "timeout"
     CANCELLED = "cancelled"
+    RESOURCE_LOCK_TIMEOUT = "resource_lock_timeout"
 
 
 @dataclass(frozen=True)

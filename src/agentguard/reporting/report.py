@@ -31,6 +31,9 @@ class ReliabilityReport:
     approval_grants: int = 0
     approval_denials: int = 0
     waiting_runs: int = 0
+    resource_lock_timeouts: int = 0
+    batch_runs: int = 0
+    batch_failures: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -56,6 +59,9 @@ class ReliabilityReport:
             "approval_grants": self.approval_grants,
             "approval_denials": self.approval_denials,
             "waiting_runs": self.waiting_runs,
+            "resource_lock_timeouts": self.resource_lock_timeouts,
+            "batch_runs": self.batch_runs,
+            "batch_failures": self.batch_failures,
         }
 
 
@@ -103,6 +109,12 @@ def build_report(result: RunResult, events: Iterable[RuntimeEvent]) -> Reliabili
         and event.data.get("status") == "waiting_approval"
         for event in event_list
     )
+    resource_lock_timeouts = sum(event.event_type is EventType.RESOURCE_LOCK_TIMEOUT for event in event_list)
+    batch_runs = sum(event.event_type is EventType.BATCH_STARTED for event in event_list)
+    batch_failures = sum(
+        event.event_type is EventType.BATCH_FINISHED and event.data.get("failed", 0) > 0
+        for event in event_list
+    )
 
     return ReliabilityReport(
         run_id=result.run_id,
@@ -126,4 +138,7 @@ def build_report(result: RunResult, events: Iterable[RuntimeEvent]) -> Reliabili
         approval_grants=approval_grants,
         approval_denials=approval_denials,
         waiting_runs=waiting_runs,
+        resource_lock_timeouts=resource_lock_timeouts,
+        batch_runs=batch_runs,
+        batch_failures=batch_failures,
     )

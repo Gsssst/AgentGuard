@@ -21,6 +21,7 @@ from .runtime.permission import (
     redact,
     redact_arguments,
 )
+from .runtime.resources import ResourceAccess, ResourceLockManager, ResourceLockTimeout
 from .runtime.loop_guard import LoopGuard, action_signature
 from .reporting import ReliabilityReport, build_report
 from .events import EventType, InMemoryEventSink, JsonlEventSink, RuntimeEvent
@@ -86,6 +87,9 @@ __all__ = [
     "PermissionOutcome",
     "PermissionDenied",
     "ApprovalDecision",
+    "ResourceAccess",
+    "ResourceLockManager",
+    "ResourceLockTimeout",
     "action_digest",
     "canonicalize",
     "compute_action_digest",

@@ -49,5 +49,15 @@ Plans:
 - [x] 05-02 — checkpointed approval pause and explicit digest-bound resume
 - [x] 05-03 — audit redaction, permission events, reports, and bilingual notes
 
+### Phase 6: Resource locks and batch concurrency
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 5
+**Plans:** 3/3 plans complete
+
+Plans:
+- [x] TBD (run /gsd-plan-phase 6 to break down) (completed 2026-09-02)
+
 ---
 *Roadmap created: 2026-08-31*

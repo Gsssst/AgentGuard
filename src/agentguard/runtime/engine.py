@@ -1,13 +1,15 @@
-"""The deterministic, single-action-per-turn Runtime loop."""
+"""The deterministic Runtime loop and explicit independent batch execution."""
 
+import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
+from collections.abc import Iterable
 from typing import Callable
 from typing import Any
 
 from agentguard.domain.actions import Action, CallTool, Finish
 from agentguard.domain.runtime import RunPause, RunResult
-from agentguard.domain.results import ToolResultStatus
+from agentguard.domain.results import FailureKind, ToolResult, ToolResultStatus
 from agentguard.domain.state import RunState, RunStatus, StopReason
 from agentguard.events.model import EventType, RuntimeEvent
 from agentguard.events.sinks import EventSink, InMemoryEventSink
@@ -17,6 +19,7 @@ from .router import Router
 from .loop_guard import LoopGuard
 from .tool import ToolExecutor
 from .permission import ApprovalDecision, PermissionDecisionKind, PermissionPolicy, action_digest, redact
+from .resources import ResourceLockManager, ResourceLockTimeout
 
 
 class SimulatedCrash(RuntimeError):
@@ -40,6 +43,8 @@ class Runtime:
     resume_attempt: int = 0
     duplicate_possible: bool = False
     permission_policy: PermissionPolicy | None = None
+    lock_manager: ResourceLockManager | None = None
+    lock_timeout: float | None = 5.0
     _event_sequence: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -53,6 +58,10 @@ class Runtime:
             self.checkpoint_path = Path(self.checkpoint_path)
         if self.checkpoint_store is None and self.checkpoint_path is not None:
             self.checkpoint_store = CheckpointStore(Path(self.checkpoint_path).parent)
+        if self.lock_timeout is not None and self.lock_timeout < 0:
+            raise ValueError("lock_timeout cannot be negative")
+        if self.lock_manager is None:
+            self.lock_manager = ResourceLockManager()
 
     async def run(
         self,
@@ -165,11 +174,32 @@ class Runtime:
                 )
                 return self._finish(state, RunStatus.FAILED, StopReason.LOOP_DETECTED)
 
-            self._emit(EventType.TOOL_STARTED, state, tool_name=action.tool_name)
-            tool_result = await self.executor.execute(
-                action,
-                on_event=lambda event_type, data: self._emit(event_type, state, **data),
-            )
+            try:
+                assert self.lock_manager is not None
+                tool = self.executor.get_tool(action.tool_name)
+                resources = tool.resources if tool is not None else {}
+                async with self.lock_manager.hold(resources, timeout=self.lock_timeout):
+                    self._emit(EventType.TOOL_STARTED, state, tool_name=action.tool_name)
+                    tool_result = await self.executor.execute(
+                        action,
+                        on_event=lambda event_type, data: self._emit(event_type, state, **data),
+                    )
+            except ResourceLockTimeout as exc:
+                self._emit(
+                    EventType.RESOURCE_LOCK_TIMEOUT,
+                    state,
+                    tool_name=action.tool_name,
+                    resources=sorted(resources),
+                    error_message=str(exc),
+                )
+                tool_result = ToolResult(
+                    tool_name=action.tool_name,
+                    status=ToolResultStatus.FAILED,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                    failure_kind=FailureKind.RESOURCE_LOCK_TIMEOUT,
+                    attempts=0,
+                )
             state.record(action, tool_result)
             state.step += 1
 
@@ -317,6 +347,84 @@ class Runtime:
             _skip_permission_once=pending_action is not None,
         )
 
+    async def execute_batch(
+        self,
+        actions: Iterable[CallTool],
+        *,
+        batch_id: str = "batch",
+    ) -> tuple[ToolResult, ...]:
+        """Execute independent Tool Actions concurrently.
+
+        Results retain input order. Tool failures and lock timeouts are
+        isolated to their own result and do not cancel unrelated Actions.
+        """
+
+        try:
+            batch = tuple(actions)
+        except TypeError as exc:
+            raise TypeError("actions must be an iterable of CallTool values") from exc
+        if not batch:
+            return ()
+        if any(not isinstance(action, CallTool) for action in batch):
+            raise TypeError("execute_batch accepts only CallTool actions")
+        if not isinstance(batch_id, str) or not batch_id.strip():
+            raise ValueError("batch_id must be a non-empty string")
+        self._emit_batch_event(EventType.BATCH_STARTED, batch_id, size=len(batch))
+
+        async def execute_one(action: CallTool) -> ToolResult:
+            tool = self.executor.get_tool(action.tool_name)
+            if self.permission_policy is not None:
+                capabilities = tool.capabilities if tool is not None else frozenset()
+                decision = self.permission_policy.decide(capabilities)
+                if decision.kind is PermissionDecisionKind.DENY:
+                    return ToolResult(
+                        tool_name=action.tool_name,
+                        status=ToolResultStatus.FAILED,
+                        error_type="PermissionDenied",
+                        error_message=str(decision.denial),
+                        failure_kind=FailureKind.PERMANENT,
+                        attempts=0,
+                    )
+                if decision.kind is PermissionDecisionKind.APPROVAL_REQUIRED:
+                    return ToolResult(
+                        tool_name=action.tool_name,
+                        status=ToolResultStatus.FAILED,
+                        error_type="ApprovalRequired",
+                        error_message="batch Actions require approval and cannot pause a batch",
+                        failure_kind=FailureKind.PERMANENT,
+                        attempts=0,
+                    )
+            resources = tool.resources if tool is not None else {}
+            try:
+                assert self.lock_manager is not None
+                async with self.lock_manager.hold(resources, timeout=self.lock_timeout):
+                    return await self.executor.execute(action)
+            except ResourceLockTimeout as exc:
+                self._emit_batch_event(
+                    EventType.RESOURCE_LOCK_TIMEOUT,
+                    batch_id,
+                    tool_name=action.tool_name,
+                    resources=sorted(resources),
+                    error_message=str(exc),
+                )
+                return ToolResult(
+                    tool_name=action.tool_name,
+                    status=ToolResultStatus.FAILED,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                    failure_kind=FailureKind.RESOURCE_LOCK_TIMEOUT,
+                    attempts=0,
+                )
+
+        results = tuple(await asyncio.gather(*(execute_one(action) for action in batch)))
+        self._emit_batch_event(
+            EventType.BATCH_FINISHED,
+            batch_id,
+            size=len(results),
+            failed=sum(result.status is not ToolResultStatus.SUCCESS for result in results),
+        )
+        return results
+
     def _finish(self, state: RunState, status: RunStatus, reason: StopReason) -> RunResult:
         state.status = status
         self._emit(
@@ -350,6 +458,19 @@ class Runtime:
                 event_type=event_type,
                 run_id=state.run_id,
                 step=state.step,
+                data=data,
+            )
+        )
+
+    def _emit_batch_event(self, event_type: EventType, batch_id: str, **data: Any) -> None:
+        assert self.event_sink is not None
+        self._event_sequence += 1
+        data.setdefault("sequence", self._event_sequence)
+        self.event_sink.emit(
+            RuntimeEvent(
+                event_type=event_type,
+                run_id=batch_id,
+                step=0,
                 data=data,
             )
         )

@@ -3,7 +3,7 @@
 import asyncio
 import inspect
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from agentguard.domain.actions import CallTool
@@ -12,6 +12,7 @@ from agentguard.events.model import EventType
 
 from .policy import RetryPolicy, RetrySafety, classify_exception
 from .permission import normalize_capabilities
+from .resources import ResourceAccess, normalize_resources, validate_resource_capabilities
 
 ToolCallable = Callable[..., Any]
 ToolEventCallback = Callable[[EventType, dict[str, Any]], None]
@@ -39,6 +40,7 @@ class Tool:
     timeout: float | None = None
     retry_safety: RetrySafety = RetrySafety.UNKNOWN
     capabilities: frozenset[str] = frozenset()
+    resources: Mapping[str, ResourceAccess | str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -48,6 +50,9 @@ class Tool:
         if self.timeout is not None and self.timeout <= 0:
             raise ValueError("tool timeout must be positive")
         object.__setattr__(self, "capabilities", normalize_capabilities(self.capabilities))
+        normalized_resources = normalize_resources(self.resources)
+        validate_resource_capabilities(normalized_resources, self.capabilities)
+        object.__setattr__(self, "resources", normalized_resources)
 
 
 class ToolRegistry:
@@ -66,6 +71,7 @@ class ToolRegistry:
         timeout: float | None = None,
         retry_safety: RetrySafety = RetrySafety.UNKNOWN,
         capabilities: Iterable[str] = (),
+        resources: Mapping[str, ResourceAccess | str] | None = None,
     ) -> None:
         self._tools[name] = Tool(
             name=name,
@@ -73,6 +79,7 @@ class ToolRegistry:
             timeout=timeout,
             retry_safety=retry_safety,
             capabilities=capabilities,
+            resources=resources,
         )
 
     def get(self, name: str) -> Tool | None:

@@ -19,6 +19,7 @@ from .permission import (
     redact,
     redact_arguments,
 )
+from .resources import ResourceAccess, ResourceLockManager, ResourceLockTimeout
 from .loop_guard import LoopGuard, action_signature
 
 __all__ = [
@@ -38,6 +39,9 @@ __all__ = [
     "PermissionOutcome",
     "PermissionDenied",
     "ApprovalDecision",
+    "ResourceAccess",
+    "ResourceLockManager",
+    "ResourceLockTimeout",
     "action_digest",
     "canonicalize",
     "compute_action_digest",

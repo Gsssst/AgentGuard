@@ -25,6 +25,10 @@ class EventType(StrEnum):
     APPROVAL_REQUESTED = "approval_requested"
     APPROVAL_GRANTED = "approval_granted"
     APPROVAL_DENIED = "approval_denied"
+    RESOURCE_WAITING = "resource_waiting"
+    RESOURCE_LOCK_TIMEOUT = "resource_lock_timeout"
+    BATCH_STARTED = "batch_started"
+    BATCH_FINISHED = "batch_finished"
     RUN_FINISHED = "run_finished"
 
 
