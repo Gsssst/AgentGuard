@@ -16,7 +16,7 @@ The verified behaviors are capability validation, three-way policy decisions, wa
 
 ```text
 PYTHONPATH=src pytest -q
-83 passed
+85 passed
 ```
 
 `actor` is a caller-provided audit label, not an authenticated identity. Version one does not implement RBAC, real authentication, an approval UI, a remote approval service, distributed durability, concurrent resource locks, or claims of exactly-once execution or production-grade approval infrastructure.

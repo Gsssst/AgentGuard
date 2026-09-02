@@ -16,7 +16,7 @@ AgentGuard 为 Tool 增加了四种固定能力标签：`read`、`write`、`exte
 
 ```text
 PYTHONPATH=src pytest -q
-83 passed
+85 passed
 ```
 
 `actor` 只是调用方提供的审计标签，不是认证后的身份。第一版没有 RBAC、真实认证、审批 UI、远程审批服务、分布式持久化、并发资源锁，也不宣称 exactly-once 或生产级审批基础设施。
