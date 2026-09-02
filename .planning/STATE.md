@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.2
-milestone_name: candidate)
-status: milestone_complete
-last_updated: 2026-09-02T02:53:58.428Z
+milestone: v0.3
+milestone_name: LangGraph Adapter
+status: planning
+last_updated: "2026-09-02T03:32:52.632Z"
+last_activity: 2026-09-02
 progress:
-  total_phases: 3
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 12
-  percent: 67
-stopped_at: Milestone complete (Phase 6 was final phase)
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # AgentGuard — Project State
@@ -24,20 +24,10 @@ See: `.planning/PROJECT.md` (updated 2026-08-31)
 
 ## Current Position
 
-- Project initialized.
-- V0.1 scope agreed: Runtime developers, scripted-first, Python library + CLI.
-- Phase 1 Runtime skeleton committed.
-- Phase 2 Tool failure boundaries committed.
-- Phase 3 loop guard and reliability reporting implemented locally.
-- 53 automated tests pass.
-- V0.1 acceptance and Phase 3 learning extraction completed.
-- Phase 4 checkpoint/recovery and reliability evaluation decisions captured.
-- Phase 4 research, pattern mapping, and three-wave implementation plans drafted.
-- Phase 4 Plan 04-01 checkpoint foundation implemented; 61 tests pass.
-- Phase 4 Plan 04-02 Runtime recovery integration implemented; 64 tests pass.
-- Phase 4 Plan 04-03 evaluation registry, runner, and bilingual notes implemented; 69 tests pass.
-- Phase 4 learning extraction completed in `04-LEARNINGS.md`.
-- Phase 5 capability policy, checkpointed approval, digest binding, redaction, reporting, and bilingual learning notes implemented.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-09-02 — Milestone v0.3 started
 
 ## Session Continuity
 
