@@ -39,13 +39,15 @@ Plans:
 
 ### Phase 5: Permission Control and Approval Boundaries
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Add inspectable Tool capability permissions, explicit approval pauses, and audit-safe evidence while deferring concurrency and framework adapters.
+**Requirements**: PERMISSION-01, PERMISSION-02, PERMISSION-03, APPROVAL-01, APPROVAL-02, APPROVAL-03, AUDIT-01, AUDIT-02, DX-03
 **Depends on:** Phase 4
-**Plans:** 0/3 plans executed
+**Plans:** 3/3 plans executed
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 5 to break down)
+- [x] 05-01 — capability tags, permission policy, and waiting state contracts
+- [x] 05-02 — checkpointed approval pause and explicit digest-bound resume
+- [x] 05-03 — audit redaction, permission events, reports, and bilingual notes
 
 ---
 *Roadmap created: 2026-08-31*
