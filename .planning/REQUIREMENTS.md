@@ -59,12 +59,18 @@
 
 ## Traceability
 
-Roadmap mapping will be populated after phase approval.
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| ADAPTER-01..06 | Phase 7 | Pending |
+| COMPAT-01..02 | Phase 7 | Pending |
+| BATCH-01..05 | Phase 8 | Pending |
+| APPROVAL-01..06 | Phase 9 | Pending |
+| COMPAT-03..05 | Phase 9 | Pending |
 
 **Coverage:**
 - v0.3 requirements: 22 total
-- Mapped to phases: 0
-- Unmapped: 22
+- Mapped to phases: 22
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-02*
