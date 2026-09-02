@@ -124,6 +124,22 @@ class ToolExecutor:
                 attempts=0,
             )
 
+        return await self.execute_explicit(action, tool, on_event=on_event)
+
+    async def execute_explicit(
+        self,
+        action: CallTool,
+        tool: Tool,
+        *,
+        on_event: ToolEventCallback | None = None,
+    ) -> ToolResult:
+        """Execute a supplied Tool without adding it to this registry."""
+
+        if not isinstance(tool, Tool):
+            raise TypeError("tool must be an AgentGuard Tool")
+        if tool.name != action.tool_name:
+            raise ValueError("tool name must match action.tool_name")
+
         timeout = tool.timeout if tool.timeout is not None else self._default_timeout
         timeout_source = "tool" if tool.timeout is not None else (
             "runtime" if self._default_timeout is not None else None

@@ -30,10 +30,10 @@ An Agent Runtime must terminate, remain bounded, and leave enough evidence to ex
 
 ### Active
 
-- [ ] Provide an optional LangGraph integration without making LangGraph a core dependency.
-- [ ] Expose a `GuardedToolNode` that accepts LangChain tools plus explicit per-tool guard configuration.
+- [x] Provide an optional LangGraph integration without making LangGraph a core dependency — v0.3 Phase 7
+- [x] Expose a `GuardedToolNode` that accepts LangChain tools plus explicit per-tool guard configuration — v0.3 Phase 7
 - [ ] Preserve LangGraph as the owner of graph state, routing, checkpoint, and interrupt/resume state.
-- [ ] Route tool execution through AgentGuard permission, timeout, retry, resource-lock, and audit boundaries.
+- [x] Route tool execution through AgentGuard permission, timeout, retry, resource-lock, and audit boundaries — v0.3 Phase 7
 - [ ] Support multiple tool calls with input-order results and structured `ToolMessage` failures.
 - [ ] Bridge approval-required calls through LangGraph `interrupt/resume` with digest-bound decisions.
 - [ ] Maintain bilingual learning notes and deterministic adapter tests, including deliberate failure scenarios.

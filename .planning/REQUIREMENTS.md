@@ -7,12 +7,12 @@
 
 ### Adapter Foundation
 
-- [ ] **ADAPTER-01**: A developer can install LangGraph support as an optional extra while the AgentGuard core package remains importable without LangGraph.
-- [ ] **ADAPTER-02**: A developer can use `GuardedToolNode` to connect LangChain-compatible tools to AgentGuard.
-- [ ] **ADAPTER-03**: A developer can configure each LangChain tool through `ToolGuard` with capabilities, resources, timeout, retry, and approval metadata.
-- [ ] **ADAPTER-04**: A tool without a `ToolGuard` configuration is denied without invoking the underlying tool.
-- [ ] **ADAPTER-05**: A configured tool call passes through AgentGuard permission, timeout, retry, resource-lock, and audit boundaries.
-- [ ] **ADAPTER-06**: Every success or failure result becomes a structured `ToolMessage` carrying the original `tool_call_id`.
+- [x] **ADAPTER-01**: A developer can install LangGraph support as an optional extra while the AgentGuard core package remains importable without LangGraph.
+- [x] **ADAPTER-02**: A developer can use `GuardedToolNode` to connect LangChain-compatible tools to AgentGuard.
+- [x] **ADAPTER-03**: A developer can configure each LangChain tool through `ToolGuard` with capabilities, resources, timeout, retry, and approval metadata.
+- [x] **ADAPTER-04**: A tool without a `ToolGuard` configuration is denied without invoking the underlying tool.
+- [x] **ADAPTER-05**: A configured tool call passes through AgentGuard permission, timeout, retry, resource-lock, and audit boundaries.
+- [x] **ADAPTER-06**: Every success or failure result becomes a structured `ToolMessage` carrying the original `tool_call_id`.
 
 ### Multi-Tool Calls
 
@@ -33,11 +33,11 @@
 
 ### Compatibility and Evidence
 
-- [ ] **COMPAT-01**: Importing the adapter without optional dependencies produces an actionable installation message rather than an unexplained `ModuleNotFoundError`.
-- [ ] **COMPAT-02**: Deterministic fake tools and message fixtures test adapter behavior without a real LLM service.
-- [ ] **COMPAT-03**: Real LangGraph integration tests run when the optional dependencies are installed and otherwise skip with a clear reason.
+- [x] **COMPAT-01**: Importing the adapter without optional dependencies produces an actionable installation message rather than an unexplained `ModuleNotFoundError`.
+- [x] **COMPAT-02**: Deterministic fake tools and message fixtures test adapter behavior without a real LLM service.
+- [x] **COMPAT-03**: Real LangGraph integration tests run when the optional dependencies are installed and otherwise skip with a clear reason.
 - [ ] **COMPAT-04**: Automated tests cover success, denial, timeout, retry exhaustion, lock conflict, approval, and digest-mismatch scenarios.
-- [ ] **COMPAT-05**: Chinese and English learning notes record implementation decisions, deliberate failures, and known limits.
+- [x] **COMPAT-05**: Chinese and English learning notes record implementation decisions, deliberate failures, and known limits.
 
 ## Future Requirements
 
@@ -61,11 +61,11 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ADAPTER-01..06 | Phase 7 | Pending |
-| COMPAT-01..02 | Phase 7 | Pending |
+| ADAPTER-01..06 | Phase 7 | Complete |
+| COMPAT-01..03, COMPAT-05 | Phase 7 | Complete |
+| COMPAT-04 | Phase 9 | Pending |
 | BATCH-01..05 | Phase 8 | Pending |
 | APPROVAL-01..06 | Phase 9 | Pending |
-| COMPAT-03..05 | Phase 9 | Pending |
 
 **Coverage:**
 - v0.3 requirements: 22 total

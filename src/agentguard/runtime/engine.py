@@ -17,7 +17,7 @@ from agentguard.checkpoint import Checkpoint, CheckpointLifecycle, CheckpointSto
 
 from .router import Router
 from .loop_guard import LoopGuard
-from .tool import ToolExecutor
+from .tool import Tool, ToolExecutor
 from .permission import ApprovalDecision, PermissionDecisionKind, PermissionPolicy, action_digest, redact
 from .resources import ResourceLockManager, ResourceLockTimeout
 
@@ -347,6 +347,110 @@ class Runtime:
             _skip_permission_once=pending_action is not None,
         )
 
+    async def execute_explicit_tool(
+        self,
+        action: CallTool,
+        tool: Tool,
+        *,
+        run_id: str = "adapter-run",
+        step: int = 0,
+    ) -> ToolResult:
+        """Execute an adapter-owned Tool through this Runtime's controls.
+
+        The supplied Tool is intentionally not inserted into the Runtime's
+        registry. This is the bridge used by framework adapters that maintain
+        their own tool collection while reusing AgentGuard policy and evidence.
+        """
+
+        if not isinstance(action, CallTool):
+            raise TypeError("action must be a CallTool")
+        if not isinstance(tool, Tool):
+            raise TypeError("tool must be a Tool")
+        if tool.name != action.tool_name:
+            raise ValueError("tool name must match action.tool_name")
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise ValueError("run_id must be a non-empty string")
+        if not isinstance(step, int) or step < 0:
+            raise ValueError("step must be a non-negative integer")
+
+        self._emit_external(EventType.ACTION_PROPOSED, run_id, step, action_type="CallTool", tool_name=tool.name, arguments=redact(action.arguments))
+        if self.permission_policy is not None:
+            decision = self.permission_policy.decide(tool.capabilities)
+            if decision.kind is PermissionDecisionKind.DENY:
+                self._emit_external(
+                    EventType.PERMISSION_DENIED,
+                    run_id,
+                    step,
+                    tool_name=tool.name,
+                    required_capabilities=sorted(decision.required_capabilities),
+                    forbidden_capabilities=sorted(decision.forbidden_capabilities),
+                    decision=decision.kind.value,
+                )
+                return ToolResult(
+                    tool_name=tool.name,
+                    status=ToolResultStatus.FAILED,
+                    error_type="PermissionDenied",
+                    error_message=str(decision.denial),
+                    failure_kind=FailureKind.PERMANENT,
+                    attempts=0,
+                )
+            if decision.kind is PermissionDecisionKind.APPROVAL_REQUIRED:
+                return ToolResult(
+                    tool_name=tool.name,
+                    status=ToolResultStatus.FAILED,
+                    error_type="ApprovalRequired",
+                    error_message="explicit Tool execution requires approval",
+                    failure_kind=FailureKind.PERMANENT,
+                    attempts=0,
+                )
+
+        resources = tool.resources
+        try:
+            assert self.lock_manager is not None
+            async with self.lock_manager.hold(resources, timeout=self.lock_timeout):
+                self._emit_external(EventType.TOOL_STARTED, run_id, step, tool_name=tool.name)
+                result = await self.executor.execute_explicit(
+                    action,
+                    tool,
+                    on_event=lambda event_type, data: self._emit_external(event_type, run_id, step, **data),
+                )
+        except ResourceLockTimeout as exc:
+            self._emit_external(
+                EventType.RESOURCE_LOCK_TIMEOUT,
+                run_id,
+                step,
+                tool_name=tool.name,
+                resources=sorted(resources),
+                error_message=str(exc),
+            )
+            result = ToolResult(
+                tool_name=tool.name,
+                status=ToolResultStatus.FAILED,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                failure_kind=FailureKind.RESOURCE_LOCK_TIMEOUT,
+                attempts=0,
+            )
+
+        if result.status is ToolResultStatus.SUCCESS:
+            self._emit_external(EventType.TOOL_SUCCEEDED, run_id, step, tool_name=result.tool_name, value=result.value, attempts=result.attempts)
+        elif result.status is ToolResultStatus.TIMED_OUT:
+            self._emit_external(EventType.TOOL_TIMED_OUT, run_id, step, tool_name=result.tool_name, attempts=result.attempts, timeout_seconds=result.timeout_seconds, timeout_source=result.timeout_source)
+        elif result.status is ToolResultStatus.CANCELLED:
+            self._emit_external(EventType.TOOL_CANCELLED, run_id, step, tool_name=result.tool_name, attempts=result.attempts)
+        else:
+            self._emit_external(
+                EventType.TOOL_FAILED,
+                run_id,
+                step,
+                tool_name=result.tool_name,
+                error_type=result.error_type,
+                error_message=result.error_message,
+                failure_kind=result.failure_kind.value if result.failure_kind is not None else None,
+                attempts=result.attempts,
+            )
+        return result
+
     async def execute_batch(
         self,
         actions: Iterable[CallTool],
@@ -473,6 +577,14 @@ class Runtime:
                 step=0,
                 data=data,
             )
+        )
+
+    def _emit_external(self, event_type: EventType, run_id: str, step: int, **data: Any) -> None:
+        assert self.event_sink is not None
+        self._event_sequence += 1
+        data.setdefault("sequence", self._event_sequence)
+        self.event_sink.emit(
+            RuntimeEvent(event_type=event_type, run_id=run_id, step=step, data=data)
         )
 
     def _save_checkpoint(

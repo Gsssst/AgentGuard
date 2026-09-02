@@ -13,7 +13,7 @@
 
 ## Phases
 
-- [ ] **Phase 7: GuardedToolNode Foundation** — Optional dependency boundary, tool normalization, and single-call guarded execution.
+- [x] **Phase 7: GuardedToolNode Foundation** — Optional dependency boundary, tool normalization, and single-call guarded execution. (completed 2026-09-02)
 - [ ] **Phase 8: Multi-Tool Batch Execution** — Multiple `tool_calls`, concurrency, resource conflicts, and ordered structured results.
 - [ ] **Phase 9: Approval Bridge and Compatibility Evidence** — LangGraph interrupt/resume approval, digest validation, and integration evidence.
 
@@ -24,7 +24,7 @@
 **Goal:** Add the optional dependency boundary, LangChain tool normalization, explicit guard configuration, and single-call structured execution.
 **Requirements**: ADAPTER-01, ADAPTER-02, ADAPTER-03, ADAPTER-04, ADAPTER-05, ADAPTER-06, COMPAT-01, COMPAT-02
 **Depends on:** Phase 6
-**Plans:** TBD
+**Plans:** 3/3 plans complete
 
 **Success criteria:**
 1. Core `import agentguard` works without LangGraph installed, while adapter import provides an actionable extra-install message.
