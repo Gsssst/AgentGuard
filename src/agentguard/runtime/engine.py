@@ -18,6 +18,7 @@ from agentguard.checkpoint import Checkpoint, CheckpointLifecycle, CheckpointSto
 from .router import Router
 from .loop_guard import LoopGuard
 from .tool import Tool, ToolExecutor
+from .policy import classify_exception
 from .permission import ApprovalDecision, PermissionDecisionKind, PermissionPolicy, action_digest, redact
 from .resources import ResourceLockManager, ResourceLockTimeout
 
@@ -456,6 +457,7 @@ class Runtime:
         actions: Iterable[CallTool],
         *,
         batch_id: str = "batch",
+        max_concurrency: int | None = None,
     ) -> tuple[ToolResult, ...]:
         """Execute independent Tool Actions concurrently.
 
@@ -473,6 +475,7 @@ class Runtime:
             raise TypeError("execute_batch accepts only CallTool actions")
         if not isinstance(batch_id, str) or not batch_id.strip():
             raise ValueError("batch_id must be a non-empty string")
+        self._validate_max_concurrency(max_concurrency)
         self._emit_batch_event(EventType.BATCH_STARTED, batch_id, size=len(batch))
 
         async def execute_one(action: CallTool) -> ToolResult:
@@ -520,7 +523,34 @@ class Runtime:
                     attempts=0,
                 )
 
-        results = tuple(await asyncio.gather(*(execute_one(action) for action in batch)))
+        semaphore = asyncio.Semaphore(max_concurrency) if max_concurrency is not None else None
+
+        async def bounded(action: CallTool) -> ToolResult:
+            try:
+                if semaphore is None:
+                    return await execute_one(action)
+                async with semaphore:
+                    return await execute_one(action)
+            except asyncio.CancelledError:
+                return ToolResult(
+                    tool_name=action.tool_name,
+                    status=ToolResultStatus.CANCELLED,
+                    error_type="CancelledError",
+                    error_message="tool execution was cancelled",
+                    failure_kind=FailureKind.CANCELLED,
+                    attempts=0,
+                )
+            except Exception as exc:
+                return ToolResult(
+                    tool_name=action.tool_name,
+                    status=ToolResultStatus.FAILED,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                    failure_kind=classify_exception(exc),
+                    attempts=0,
+                )
+
+        results = tuple(await asyncio.gather(*(bounded(action) for action in batch)))
         self._emit_batch_event(
             EventType.BATCH_FINISHED,
             batch_id,
@@ -528,6 +558,102 @@ class Runtime:
             failed=sum(result.status is not ToolResultStatus.SUCCESS for result in results),
         )
         return results
+
+    async def execute_explicit_batch(
+        self,
+        items: Iterable[tuple[CallTool, Tool]],
+        *,
+        run_id: str = "adapter-run",
+        max_concurrency: int | None = None,
+    ) -> tuple[ToolResult, ...]:
+        """Execute adapter-owned Tools through Runtime controls.
+
+        Tools are supplied directly and never inserted into the Runtime
+        registry. Results preserve input order while individual exceptions and
+        cancellations are isolated to their own item.
+        """
+
+        try:
+            batch = tuple(items)
+        except TypeError as exc:
+            raise TypeError("items must be an iterable of (CallTool, Tool) pairs") from exc
+        for item in batch:
+            if not isinstance(item, tuple) or len(item) != 2:
+                raise TypeError("items must contain (CallTool, Tool) pairs")
+            action, tool = item
+            if not isinstance(action, CallTool):
+                raise TypeError("batch actions must be CallTool values")
+            if not isinstance(tool, Tool):
+                raise TypeError("batch tools must be AgentGuard Tool values")
+            if tool.name != action.tool_name:
+                raise ValueError("tool name must match action.tool_name")
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise ValueError("run_id must be a non-empty string")
+        self._validate_max_concurrency(max_concurrency)
+        if not batch:
+            return ()
+
+        self._emit_batch_event(EventType.BATCH_STARTED, run_id, size=len(batch))
+        semaphore = asyncio.Semaphore(max_concurrency) if max_concurrency is not None else None
+
+        async def execute_one(index: int, action: CallTool, tool: Tool) -> ToolResult:
+            try:
+                if semaphore is None:
+                    return await self.execute_explicit_tool(action, tool, run_id=run_id, step=index)
+                async with semaphore:
+                    return await self.execute_explicit_tool(action, tool, run_id=run_id, step=index)
+            except asyncio.CancelledError:
+                self._emit_external(EventType.TOOL_CANCELLED, run_id, index, tool_name=action.tool_name, attempts=0)
+                return ToolResult(
+                    tool_name=action.tool_name,
+                    status=ToolResultStatus.CANCELLED,
+                    error_type="CancelledError",
+                    error_message="tool execution was cancelled",
+                    failure_kind=FailureKind.CANCELLED,
+                    attempts=0,
+                )
+            except Exception as exc:
+                result = ToolResult(
+                    tool_name=action.tool_name,
+                    status=ToolResultStatus.FAILED,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                    failure_kind=classify_exception(exc),
+                    attempts=0,
+                )
+                self._emit_external(
+                    EventType.TOOL_FAILED,
+                    run_id,
+                    index,
+                    tool_name=action.tool_name,
+                    error_type=result.error_type,
+                    error_message=result.error_message,
+                    failure_kind=result.failure_kind.value if result.failure_kind else None,
+                    attempts=0,
+                )
+                return result
+
+        results = tuple(
+            await asyncio.gather(
+                *(execute_one(index, action, tool) for index, (action, tool) in enumerate(batch))
+            )
+        )
+        self._emit_batch_event(
+            EventType.BATCH_FINISHED,
+            run_id,
+            size=len(results),
+            failed=sum(result.status is not ToolResultStatus.SUCCESS for result in results),
+        )
+        return results
+
+    @staticmethod
+    def _validate_max_concurrency(max_concurrency: int | None) -> None:
+        if max_concurrency is not None and (
+            isinstance(max_concurrency, bool)
+            or not isinstance(max_concurrency, int)
+            or max_concurrency <= 0
+        ):
+            raise ValueError("max_concurrency must be a positive integer")
 
     def _finish(self, state: RunState, status: RunStatus, reason: StopReason) -> RunResult:
         state.status = status
