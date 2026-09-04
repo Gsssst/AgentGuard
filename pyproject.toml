@@ -10,8 +10,8 @@ requires-python = ">=3.11"
 
 [project.optional-dependencies]
 langgraph = [
-    "langgraph>=0.2,<1.0",
-    "langchain-core>=0.3,<1.0",
+    "langgraph==0.6.11",
+    "langchain-core==0.3.86",
 ]
 
 [project.scripts]

@@ -1,3 +1,17 @@
 """Optional integrations for external Agent frameworks."""
 
-__all__: list[str] = []
+from .approval import (
+    ApprovalBatch,
+    ApprovalItem,
+    NormalizedApproval,
+    build_approval_batch,
+    normalize_resume_decisions,
+)
+
+__all__ = [
+    "ApprovalBatch",
+    "ApprovalItem",
+    "NormalizedApproval",
+    "build_approval_batch",
+    "normalize_resume_decisions",
+]

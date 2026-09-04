@@ -3,7 +3,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Callable
 from typing import Any
 
@@ -355,6 +355,7 @@ class Runtime:
         *,
         run_id: str = "adapter-run",
         step: int = 0,
+        approval: ApprovalDecision | None = None,
     ) -> ToolResult:
         """Execute an adapter-owned Tool through this Runtime's controls.
 
@@ -373,6 +374,9 @@ class Runtime:
             raise ValueError("run_id must be a non-empty string")
         if not isinstance(step, int) or step < 0:
             raise ValueError("step must be a non-negative integer")
+
+        if approval is not None and not isinstance(approval, ApprovalDecision):
+            raise TypeError("approval must be an ApprovalDecision")
 
         self._emit_external(EventType.ACTION_PROPOSED, run_id, step, action_type="CallTool", tool_name=tool.name, arguments=redact(action.arguments))
         if self.permission_policy is not None:
@@ -396,14 +400,82 @@ class Runtime:
                     attempts=0,
                 )
             if decision.kind is PermissionDecisionKind.APPROVAL_REQUIRED:
+                if approval is None or not approval.approved:
+                    self._emit_external(
+                        EventType.APPROVAL_DENIED,
+                        run_id,
+                        step,
+                        tool_name=tool.name,
+                        required_capabilities=sorted(decision.required_capabilities),
+                        action_digest=approval.action_digest if approval is not None else None,
+                        actor=approval.actor if approval is not None else None,
+                        reason=approval.reason if approval is not None else "approval required",
+                    )
+                    return ToolResult(
+                        tool_name=tool.name,
+                        status=ToolResultStatus.FAILED,
+                        error_type="PermissionDenied",
+                        error_message="approval was not granted",
+                        failure_kind=FailureKind.PERMANENT,
+                        attempts=0,
+                    )
+
+        if approval is not None:
+            if not approval.approved:
+                self._emit_external(
+                    EventType.APPROVAL_DENIED,
+                    run_id,
+                    step,
+                    tool_name=tool.name,
+                    required_capabilities=sorted(tool.capabilities),
+                    action_digest=approval.action_digest,
+                    actor=approval.actor,
+                    reason=approval.reason,
+                )
                 return ToolResult(
                     tool_name=tool.name,
                     status=ToolResultStatus.FAILED,
-                    error_type="ApprovalRequired",
-                    error_message="explicit Tool execution requires approval",
+                    error_type="PermissionDenied",
+                    error_message="approval was not granted",
                     failure_kind=FailureKind.PERMANENT,
                     attempts=0,
                 )
+            expected_digest = action_digest(
+                action,
+                capabilities=tool.capabilities,
+                run_id=run_id,
+                step=step,
+            )
+            if approval.action_digest != expected_digest:
+                self._emit_external(
+                    EventType.APPROVAL_DENIED,
+                    run_id,
+                    step,
+                    tool_name=tool.name,
+                    required_capabilities=sorted(tool.capabilities),
+                    action_digest=approval.action_digest,
+                    expected_action_digest=expected_digest,
+                    actor=approval.actor,
+                    reason="approval digest mismatch",
+                )
+                return ToolResult(
+                    tool_name=tool.name,
+                    status=ToolResultStatus.FAILED,
+                    error_type="PermissionDenied",
+                    error_message="approval digest does not match action",
+                    failure_kind=FailureKind.PERMANENT,
+                    attempts=0,
+                )
+            self._emit_external(
+                EventType.APPROVAL_GRANTED,
+                run_id,
+                step,
+                tool_name=tool.name,
+                required_capabilities=sorted(tool.capabilities),
+                action_digest=approval.action_digest,
+                actor=approval.actor,
+                reason=approval.reason,
+            )
 
         resources = tool.resources
         try:
@@ -565,6 +637,8 @@ class Runtime:
         *,
         run_id: str = "adapter-run",
         max_concurrency: int | None = None,
+        approval_context: Mapping[int, ApprovalDecision] | None = None,
+        step_indices: Mapping[int, int] | None = None,
     ) -> tuple[ToolResult, ...]:
         """Execute adapter-owned Tools through Runtime controls.
 
@@ -589,6 +663,18 @@ class Runtime:
                 raise ValueError("tool name must match action.tool_name")
         if not isinstance(run_id, str) or not run_id.strip():
             raise ValueError("run_id must be a non-empty string")
+        if approval_context is not None:
+            if not isinstance(approval_context, Mapping):
+                raise TypeError("approval_context must be a mapping of input index to ApprovalDecision")
+            if any(not isinstance(index, int) or index < 0 for index in approval_context):
+                raise TypeError("approval_context keys must be non-negative integers")
+            if any(not isinstance(decision, ApprovalDecision) for decision in approval_context.values()):
+                raise TypeError("approval_context values must be ApprovalDecision values")
+        if step_indices is not None and (
+            not isinstance(step_indices, Mapping)
+            or any(not isinstance(key, int) or not isinstance(value, int) or value < 0 for key, value in step_indices.items())
+        ):
+            raise TypeError("step_indices must map batch positions to non-negative input indexes")
         self._validate_max_concurrency(max_concurrency)
         if not batch:
             return ()
@@ -599,9 +685,21 @@ class Runtime:
         async def execute_one(index: int, action: CallTool, tool: Tool) -> ToolResult:
             try:
                 if semaphore is None:
-                    return await self.execute_explicit_tool(action, tool, run_id=run_id, step=index)
+                    return await self.execute_explicit_tool(
+                        action,
+                        tool,
+                        run_id=run_id,
+                        step=step_indices.get(index, index) if step_indices else index,
+                        approval=approval_context.get(index) if approval_context else None,
+                    )
                 async with semaphore:
-                    return await self.execute_explicit_tool(action, tool, run_id=run_id, step=index)
+                    return await self.execute_explicit_tool(
+                        action,
+                        tool,
+                        run_id=run_id,
+                        step=step_indices.get(index, index) if step_indices else index,
+                        approval=approval_context.get(index) if approval_context else None,
+                    )
             except asyncio.CancelledError:
                 self._emit_external(EventType.TOOL_CANCELLED, run_id, index, tool_name=action.tool_name, attempts=0)
                 return ToolResult(
