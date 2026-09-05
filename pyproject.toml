@@ -1,18 +1,42 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentguard"
-version = "0.1.0.dev0"
+version = "0.3.0"
 description = "Reliability controls and fault-injection tools for Agent Runtimes"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Shengt_G" }]
 requires-python = ">=3.11"
+keywords = ["agents", "langgraph", "reliability", "tool-calling", "fault-injection"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 
 [project.optional-dependencies]
 langgraph = [
     "langgraph==0.6.11",
     "langchain-core==0.3.86",
 ]
+dev = [
+    "pytest>=8,<10",
+    "pytest-asyncio>=0.24,<2",
+]
+
+[project.urls]
+Homepage = "https://github.com/Gsssst/AgentGuard"
+Repository = "https://github.com/Gsssst/AgentGuard"
+Issues = "https://github.com/Gsssst/AgentGuard/issues"
+Changelog = "https://github.com/Gsssst/AgentGuard/blob/main/CHANGELOG.md"
 
 [project.scripts]
 agentguard = "agentguard.cli:main"
