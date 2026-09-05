@@ -1,21 +1,40 @@
-# LangGraph Adapter Feature Research
+# v0.4 Feature Research
 
-## Table stakes
+## Table Stakes
 
-1. Accept LangChain-compatible tools and map them to explicit AgentGuard `ToolGuard` declarations.
-2. Consume the current `AIMessage` tool calls and emit one `ToolMessage` per call with the original `tool_call_id`.
-3. Preserve input order in returned messages while allowing independent calls to use AgentGuard batch execution.
-4. Convert permission, timeout, retry-exhaustion, lock-timeout, and unknown-tool outcomes into safe structured messages.
-5. Fail closed when a tool has no guard configuration.
-6. Keep graph state/checkpoint ownership in LangGraph.
+| Capability | Expected behavior | Complexity |
+|---|---|---|
+| Run list | Show recent runs with status, start time, duration, and event counts | Low |
+| Run detail | Show one run's ordered event timeline | Low |
+| Event detail | Inspect safe fields for tool, approval, retry, timeout, and failure events | Medium |
+| Live updates | Append new events to the open run without page refresh | Medium |
+| History | Re-open a completed run from JSONL-backed records | Medium |
+| Deterministic demo | Start built-in success/failure/approval scenarios from the UI | Medium |
 
-## Differentiators for this milestone
+## Differentiators for AgentGuard
 
-- Approval-required calls pause through LangGraph `interrupt/resume`.
-- Approval decisions are bound to a canonical action digest and checked on resume.
-- Existing AgentGuard audit events and reliability reports remain available for adapter calls.
-- Deterministic fake LangChain tools and failure scenarios make the integration testable without an LLM provider.
+- Correlate every event with `run_id`, sequence number, step, tool call ID, and
+  terminal status.
+- Make failure kinds and retry attempts visible instead of flattening them into
+  generic logs.
+- Preserve the same redaction boundary used by Runtime and LangGraph approval.
+- Show a clear distinction between direct execution, pending approval, denied
+  calls, retrying calls, and final failures.
+- Surface known limits: process-local event collection, bounded compatibility,
+  and at-least-once side-effect semantics.
 
-## Deferred
+## Deferred Features
 
-- Full graph factory, automatic DAG scheduling, cross-process locks, streaming token integration, and framework-agnostic message translation beyond LangChain Core.
+- Page-level approve/deny actions.
+- Multi-run comparison, trend charts, alert rules, and export formats.
+- User accounts, RBAC, multi-tenancy, and remote deployment.
+- DAG visualization and graph-level LoopGuard dashboards.
+
+## Proposed v0.4 User Flow
+
+1. Start the local console.
+2. Choose a built-in scenario or connect an external AgentGuard runtime.
+3. Open the newly created run automatically.
+4. Watch events arrive through SSE.
+5. Click an event to inspect its safe detail payload.
+6. Return to the run list and reopen the persisted JSONL history.

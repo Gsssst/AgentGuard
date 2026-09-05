@@ -1,22 +1,31 @@
-# v0.3 LangGraph Adapter Research Summary
+# v0.4 Research Summary
 
 ## Recommendation
 
-Build a thin `GuardedToolNode` adapter around public LangGraph/LangChain Core APIs. Keep LangGraph's graph state, checkpoint, and interrupt lifecycle authoritative; route every actual tool invocation through AgentGuard's existing policy and execution boundaries.
+Build a local, single-process observability console around a versioned
+AgentGuard event envelope. Use FastAPI REST endpoints plus native SSE for
+one-way live updates, JSONL for append-only history, and a separate React/Vite
+frontend. This is enough to validate the developer workflow without adding a
+database, broker, WebSocket layer, or authentication system.
 
-## Stack additions
+## Key Findings
 
-- Optional `langgraph` and `langchain-core` extra.
-- Public APIs: `ToolNode`-compatible state shape, `AIMessage.tool_calls`, `ToolMessage`, `interrupt`, and `Command(resume=...)`.
-- Exact versions remain to be verified in implementation because the dependencies are not installed in the current environment.
+- FastAPI's current SSE support provides JSON event data and reconnect metadata
+  (`event`, `id`, `retry`, `comment`).
+- Browser `EventSource` is unidirectional and reconnect-aware, matching a
+  read-only monitoring stream.
+- JSONL is easy to append and inspect, but needs bounded indexes and safe
+  handling of partial/corrupt lines.
+- The event collector should persist before publishing, assign monotonic IDs,
+  and apply the existing AgentGuard redaction boundary.
+- The first valuable UI is a run list → run timeline → event detail drawer,
+  backed by deterministic built-in scenarios and a minimal external ingestion
+  path.
 
-## Scope priorities
+## Sources
 
-1. Single-call guarded execution and structured failures.
-2. Multiple calls with input-order results and independent failure handling.
-3. Approval bridge using interrupt/resume and digest validation.
-4. Documentation, bilingual learning notes, and deterministic integration tests.
-
-## Main risks
-
-Message shape/version drift, duplicated checkpoint state, lost tool-call IDs, unsafe approval resume, and accidental execution of unconfigured tools.
+- FastAPI SSE tutorial: <https://fastapi.tiangolo.com/tutorial/server-sent-events/>
+- FastAPI SSE reference: <https://fastapi.tiangolo.com/reference/sse/>
+- MDN EventSource: <https://developer.mozilla.org/en-US/docs/Web/API/EventSource>
+- Vite guide: <https://vite.dev/guide/>
+- JSON Lines specification: <https://jsonlines.org/>

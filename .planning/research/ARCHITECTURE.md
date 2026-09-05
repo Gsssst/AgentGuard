@@ -1,32 +1,67 @@
-# LangGraph Adapter Architecture Research
+# v0.4 Architecture Research
 
-## Boundary
+## Proposed Data Flow
 
 ```text
-LangGraph StateGraph / router / checkpointer
-                |
-                v
-        GuardedToolNode
-                |
-        AgentGuard Tool + policy
-                |
- timeout / retry / permission / lock / audit
-                |
-          LangChain tool
+AgentGuard Runtime / demo runner
+            |
+            v
+     EventCollector
+       |         |
+       |         +--> in-memory run index + subscriber queues
+       |
+       +------------> JSONL append-only history
+                         |
+FastAPI REST (/runs, /scenarios)
+FastAPI SSE  (/runs/{id}/events)
+            |
+            v
+      React + Vite console
 ```
 
-## Proposed flow
+## Event Envelope
 
-1. Read the latest `AIMessage` from the configured messages key.
-2. Normalize each call (`name`, `args`, `tool_call_id`) into an AgentGuard `CallTool` action.
-3. Resolve a guard by tool name; missing guards produce a denied result without invoking the tool.
-4. Partition calls into direct calls and approval-required calls.
-5. For approval calls, call LangGraph `interrupt` with redacted call summaries and digests. On resume, validate each decision and digest before execution.
-6. Execute approved/direct calls through `Runtime.execute_batch()` or an equivalent adapter-owned execution path.
-7. Convert each result to a `ToolMessage` using the original call ID and return the state update expected by LangGraph.
+Every persisted and streamed event should use one versioned envelope:
 
-## Ownership
+```json
+{
+  "schema_version": "agentguard.event.v1",
+  "run_id": "run-123",
+  "sequence": 17,
+  "occurred_at": "2026-09-04T12:00:00Z",
+  "event_type": "TOOL_RETRY",
+  "step": 2,
+  "tool_call_id": "call-2",
+  "status": "retrying",
+  "payload": {"attempt": 2, "failure_kind": "transient"}
+}
+```
 
-- LangGraph owns graph state, message accumulation, checkpoint persistence, and resume routing.
-- AgentGuard owns tool execution policy, failure classification, resource coordination, and audit evidence.
-- The adapter translates at the boundary; it must not duplicate checkpoint state or silently bypass Runtime controls.
+The event collector owns sequence assignment. The server appends the complete
+JSON line before publishing it to live subscribers, so a successful SSE send
+never becomes the only copy of an event.
+
+## API Shape
+
+- `POST /api/runs` — start a built-in deterministic scenario.
+- `GET /api/runs` — list recent runs from the in-memory index plus JSONL scan.
+- `GET /api/runs/{run_id}` — return run summary and persisted events.
+- `GET /api/runs/{run_id}/events` — SSE stream with `id=sequence`.
+- `POST /api/events` — minimal external ingestion endpoint for trusted local
+  SDK clients; apply the same validation and redaction contract.
+
+## Frontend Composition
+
+- `RunListPage`: recent runs and status filters.
+- `RunDetailPage`: summary header and ordered timeline.
+- `EventDetailDrawer`: safe JSON fields and event-type-specific labels.
+- `useRunEvents`: EventSource lifecycle, reconnect, last-event ID, and dedupe.
+
+## Build Order
+
+1. Stabilize event envelope and collector against existing Runtime sink events.
+2. Add JSONL writer/reader and recent-run index.
+3. Add REST endpoints and deterministic scenario launcher.
+4. Add SSE endpoint with reconnect and bounded subscriber queues.
+5. Add the React run list/detail UI.
+6. Add external ingestion and end-to-end tests.

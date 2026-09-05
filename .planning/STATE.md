@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.3
-milestone_name: LangGraph Adapter
-status: Awaiting next milestone
-last_updated: "2026-09-04T12:42:09.872Z"
-last_activity: 2026-09-04 — Milestone v0.3 completed and archived
+milestone: v0.4
+milestone_name: Agent Observability Console
+status: ready_to_plan
+last_updated: "2026-09-04T12:59:48.919Z"
+last_activity: 2026-09-04
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # AgentGuard — Project State
@@ -20,14 +20,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-09-04)
 
 **Core value:** An Agent Runtime must terminate, remain bounded, and leave enough evidence to explain what happened when tools fail or the agent repeats itself.
-**Current focus:** Planning next milestone
+**Current focus:** Phase 11 — Event Contract and Collector
 
 ## Current Position
 
-Phase: Milestone v0.3 complete
+Phase: 11 (ready to plan)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-04 — Milestone v0.3 completed and archived
+Status: Roadmap and requirements defined
+Last activity: 2026-09-04 — v0.4 roadmap approved for planning
 
 ## Session Continuity
 
@@ -45,4 +45,4 @@ Last activity: 2026-09-04 — Milestone v0.3 completed and archived
 
 ## Operator Next Steps
 
-- Start the next milestone with `$gsd-new-milestone`.
+- Plan the first phase with `$gsd-plan-phase 11`.

@@ -18,14 +18,19 @@ An Agent Runtime must terminate, remain bounded, and leave enough evidence to ex
 - Multi-tool concurrency, resource locking, permission boundaries, safe structured failures, and digest-bound approval resume.
 - Standard `MessagesState + add_messages` pause/resume flow verified with one ordered final result per call.
 
-## Next Milestone Goals
+## Current Milestone: v0.4 Agent Observability Console
 
-The next milestone is not yet committed. Candidate goals are:
+**Goal:** Add a local Web console that lets AgentGuard developers observe and replay Agent tool execution, approvals, failures, and retries.
 
-- Expose a complete adapter audit-event timeline for validation and approval states.
-- Add graph-level reliability reporting and LoopGuard integration boundaries.
-- Design a small monitoring/testing console without claiming production-grade multi-tenancy.
-- Expand the tested LangGraph compatibility matrix only where evidence justifies it.
+**Target features:**
+
+- FastAPI local service with SSE event streaming.
+- React + Vite run list, run detail timeline, and event detail drawer.
+- In-memory live state with JSONL history persistence.
+- Built-in deterministic test scenarios plus a small external SDK/API ingestion path.
+- Read-only approval status in v0.4; UI approve/deny is deferred to a later minor release.
+
+**Explicit boundaries:** No database, WebSocket, login, multi-tenancy, or production HA in this milestone.
 
 ## Requirements
 
@@ -44,7 +49,7 @@ The next milestone is not yet committed. Candidate goals are:
 
 ### Active
 
-No active milestone requirements. `$gsd-new-milestone` will define the next set.
+v0.4 requirements will be defined and traced in `.planning/REQUIREMENTS.md`.
 
 ### Out of Scope
 
@@ -103,4 +108,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current evidence and feedback.
 
 ---
-*Last updated: 2026-09-04 after completing v0.3 LangGraph Adapter*
+*Last updated: 2026-09-04 after starting v0.4 Agent Observability Console*
