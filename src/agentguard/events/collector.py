@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from threading import Lock
+from types import MappingProxyType
 
 from .contract import (
     EventEnvelope,
@@ -130,23 +131,38 @@ def _elapsed_seconds(started_at: str, finished_at: str) -> float | None:
     return duration if duration >= 0 else None
 
 
+def _positive_limit(value: object, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{name} must be an integer")
+    if value <= 0:
+        raise ValueError(f"{name} must be positive")
+    return value
+
+
 class EventCollector:
     """Collect Runtime events into atomic per-run timelines and summaries."""
 
     def __init__(
         self,
         *,
+        max_runs: int = DEFAULT_MAX_RUNS,
+        max_events_per_run: int = DEFAULT_MAX_EVENTS_PER_RUN,
+        max_diagnostics: int = DEFAULT_MAX_DIAGNOSTICS,
         clock: Clock = _utc_now,
         normalizer: Normalizer = normalize_runtime_event,
     ) -> None:
+        self._max_runs = _positive_limit(max_runs, name="max_runs")
+        self._max_events_per_run = _positive_limit(
+            max_events_per_run,
+            name="max_events_per_run",
+        )
+        max_diagnostics = _positive_limit(max_diagnostics, name="max_diagnostics")
         self._clock = clock
         self._normalizer = normalizer
         self._lock = Lock()
         self._runs: dict[str, _RunRecord] = {}
-        self._diagnostics: deque[CollectorDiagnostic] = deque(maxlen=DEFAULT_MAX_DIAGNOSTICS)
+        self._diagnostics: deque[CollectorDiagnostic] = deque(maxlen=max_diagnostics)
         self._rejection_counts: Counter[str] = Counter()
-        self._max_runs = DEFAULT_MAX_RUNS
-        self._max_events_per_run = DEFAULT_MAX_EVENTS_PER_RUN
 
     def emit(self, event: RuntimeEvent) -> None:
         """EventSink-compatible fail-open entry point."""
@@ -358,4 +374,4 @@ class EventCollector:
 
     def rejection_counts(self) -> Mapping[str, int]:
         with self._lock:
-            return dict(self._rejection_counts)
+            return MappingProxyType(dict(self._rejection_counts))

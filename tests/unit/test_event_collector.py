@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
 from threading import Barrier
+from types import MappingProxyType
 
 import pytest
 
@@ -287,3 +289,87 @@ def test_normalizer_can_reenter_read_api_without_deadlocking() -> None:
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(collector.accept, _event(EventType.RUN_STARTED))
         assert future.result(timeout=1).is_accepted
+
+
+def test_retention_limits_keep_truthful_total_and_range_metadata() -> None:
+    collector = EventCollector(max_runs=2, max_events_per_run=3, max_diagnostics=2)
+    for _ in range(5):
+        assert collector.accept(_event(EventType.RUN_STARTED, "run-a")).is_accepted
+    assert collector.accept(_event(EventType.RUN_STARTED, "run-b")).is_accepted
+
+    events = collector.get_events("run-a")
+    summary = collector.get_run("run-a")
+    assert [event.sequence for event in events] == [3, 4, 5]
+    assert summary is not None
+    assert summary.event_count == 5
+    assert summary.retained_event_count == 3
+    assert summary.first_retained_sequence == 3
+    assert summary.last_sequence == 5
+    assert len(collector.list_runs()) == 2
+
+    for run_id in ("run-c", "run-d", "run-e"):
+        result = collector.accept(_event(EventType.RUN_STARTED, run_id))
+        assert result.code == "run_capacity_reached"
+    assert len(collector.diagnostics()) == 2
+    assert collector.rejection_counts()["run_capacity_reached"] == 3
+
+
+def test_terminal_identity_is_never_evicted_or_reused_at_capacity() -> None:
+    collector = EventCollector(max_runs=2, max_events_per_run=3, max_diagnostics=3)
+    collector.emit(_event(EventType.RUN_STARTED, "terminal"))
+    collector.emit(
+        _event(
+            EventType.RUN_FINISHED,
+            "terminal",
+            status="completed",
+            stop_reason="finished",
+        )
+    )
+    terminal = collector.get_run("terminal")
+    collector.emit(_event(EventType.RUN_STARTED, "active"))
+
+    reused = collector.accept(_event(EventType.RUN_STARTED, "terminal"))
+    overflow = collector.accept(_event(EventType.RUN_STARTED, "new-run"))
+    assert reused.code == "run_already_terminal"
+    assert overflow.code == "run_capacity_reached"
+    assert reused.envelope is None and overflow.envelope is None
+    assert collector.get_run("terminal") == terminal
+    assert [event.sequence for event in collector.get_events("terminal")] == [1, 2]
+    assert {summary.run_id for summary in collector.list_runs()} == {"terminal", "active"}
+
+
+def test_public_snapshots_are_immutable_or_copy_safe() -> None:
+    collector = EventCollector()
+    collector.emit(_event(EventType.RUN_STARTED))
+    collector.accept(object())  # type: ignore[arg-type]
+
+    events = collector.get_events("run-1")
+    summary = collector.get_run("run-1")
+    diagnostics = collector.diagnostics()
+    counts = collector.rejection_counts()
+    assert isinstance(events, tuple)
+    assert isinstance(diagnostics, tuple)
+    assert isinstance(counts, MappingProxyType)
+    assert summary is not None
+    with pytest.raises(FrozenInstanceError):
+        summary.event_count = 999  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        events[0].payload["new"] = "value"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        counts["collector_internal_error"] = 99  # type: ignore[index]
+    assert collector.get_run("run-1").event_count == 1  # type: ignore[union-attr]
+    assert sum(collector.rejection_counts().values()) == 1
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "error"),
+    [
+        ("max_runs", True, TypeError),
+        ("max_runs", 0, ValueError),
+        ("max_events_per_run", -1, ValueError),
+        ("max_diagnostics", 1.5, TypeError),
+    ],
+)
+def test_invalid_limits_fail_fast(name: str, value: object, error: type[Exception]) -> None:
+    with pytest.raises(error):
+        EventCollector(**{name: value})  # type: ignore[arg-type]
