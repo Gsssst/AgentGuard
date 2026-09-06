@@ -52,6 +52,22 @@ def _validate_step(step: Any) -> int:
     return step
 
 
+def _contains_raw_exception(value: Any, seen: set[int] | None = None) -> bool:
+    """Detect exception objects without formatting attacker-controlled values."""
+
+    if isinstance(value, BaseException):
+        return True
+    if not isinstance(value, (Mapping, list, tuple)):
+        return False
+    seen = seen if seen is not None else set()
+    identity = id(value)
+    if identity in seen:
+        return False
+    seen.add(identity)
+    values = value.values() if isinstance(value, Mapping) else value
+    return any(_contains_raw_exception(item, seen) for item in values)
+
+
 @dataclass
 class Runtime:
     """Drive one Router and one ToolExecutor until a terminal outcome."""
@@ -1118,6 +1134,8 @@ class Runtime:
     ) -> None:
         """Safely emit a framework-owned fact through the strict v1 boundary."""
 
+        if _contains_raw_exception(data):
+            raise TypeError("framework event data cannot contain raw exceptions")
         self._emit_source(
             event_type,
             run_id=run_id,
