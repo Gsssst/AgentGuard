@@ -95,6 +95,7 @@ None - plan executed within its intended architecture and scope.
 - The first RED run placed a secret sentinel in an ordinary `value` string and correctly exposed that AgentGuard uses structural sensitive-key redaction rather than arbitrary content scanning. The fixture was corrected to use `token`/`password` fields, and both learning records now state this limit explicitly instead of claiming automatic discovery of arbitrary secrets.
 - Execution was interrupted by a provider usage-limit pause after Task 1. Work resumed from commit `565e449`; no task was replayed, amended, reset, or lost.
 - Git index writes required the already authorized filesystem escalation. Hooks stayed enabled and each commit staged only its explicit plan files.
+- `roadmap.update-plan-progress` correctly detected 4 plans and 4 summaries but left the legacy human-readable progress line at 3/4; the handler was rerun and the stale ROADMAP/requirements trace rows were corrected to match the authoritative completed artifacts.
 
 ## TDD Gate Compliance
 

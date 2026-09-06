@@ -19,7 +19,7 @@
 **Goal:** Define a versioned, safe event envelope and collect Runtime/adapter events into a process-local run index.
 **Requirements:** OBS-03, OBS-04, COMPAT-01
 **Depends on:** v0.3 Runtime and adapter events
-**Plan progress:** 3/4 complete
+**Plan progress:** 4/4 complete
 
 **Success criteria:**
 
@@ -74,13 +74,13 @@
 | Requirement | Phase | Status |
 |---|---|---|
 | OBS-01..02 | Phase 12 | Pending |
-| OBS-03..04 | Phase 11 | Pending |
+| OBS-03..04 | Phase 11 | Complete |
 | STREAM-01..03 | Phase 13 | Pending |
 | HISTORY-01..03 | Phase 12 | Pending |
 | UI-01..03 | Phase 14 | Pending |
 | DEMO-01 | Phase 13 | Pending |
 | INGEST-01..02 | Phase 13 | Pending |
-| COMPAT-01 | Phase 11 | Pending |
+| COMPAT-01 | Phase 11 | Complete |
 | COMPAT-02 | Phase 13 | Pending |
 | COMPAT-03..04 | Phase 14 | Pending |
 

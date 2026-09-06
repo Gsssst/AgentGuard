@@ -73,7 +73,7 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | OBS-01..02 | Phase 12 | Pending |
-| OBS-03..04 | Phase 11 | Pending |
+| OBS-03..04 | Phase 11 | Complete |
 | STREAM-01..03 | Phase 13 | Pending |
 | HISTORY-01..03 | Phase 12 | Pending |
 | UI-01..03 | Phase 14 | Pending |
