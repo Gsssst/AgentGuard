@@ -24,7 +24,7 @@ from .runtime.permission import (
 from .runtime.resources import ResourceAccess, ResourceLockManager, ResourceLockTimeout
 from .runtime.loop_guard import LoopGuard, action_signature
 from .reporting import ReliabilityReport, build_report
-from .events import EventType, InMemoryEventSink, JsonlEventSink, RuntimeEvent
+from .events import EventCollector, EventEnvelope, EventType, InMemoryEventSink, JsonlEventSink, RunSummary, RuntimeEvent
 from .checkpoint import (
     Checkpoint,
     CheckpointCorruptError,
@@ -74,8 +74,11 @@ __all__ = [
     "Runtime",
     "SimulatedCrash",
     "EventType",
+    "EventCollector",
+    "EventEnvelope",
     "InMemoryEventSink",
     "JsonlEventSink",
+    "RunSummary",
     "RuntimeEvent",
     "RetryPolicy",
     "RetrySafety",

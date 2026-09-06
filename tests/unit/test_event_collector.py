@@ -3,6 +3,8 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
+import subprocess
+import sys
 from threading import Barrier
 from types import MappingProxyType
 
@@ -373,3 +375,46 @@ def test_public_snapshots_are_immutable_or_copy_safe() -> None:
 def test_invalid_limits_fail_fast(name: str, value: object, error: type[Exception]) -> None:
     with pytest.raises(error):
         EventCollector(**{name: value})  # type: ignore[arg-type]
+
+
+def test_public_event_exports_are_complete_and_unique() -> None:
+    import agentguard
+    import agentguard.events as events
+
+    assert agentguard.EventCollector is events.EventCollector
+    assert agentguard.EventEnvelope is events.EventEnvelope
+    assert agentguard.RunSummary is events.RunSummary
+    assert len(agentguard.__all__) == len(set(agentguard.__all__))
+    assert len(events.__all__) == len(set(events.__all__))
+    assert all(hasattr(agentguard, name) for name in agentguard.__all__)
+    assert all(hasattr(events, name) for name in events.__all__)
+
+
+def test_core_import_does_not_load_console_or_optional_frameworks() -> None:
+    source_root = str(__file__).split("/tests/", 1)[0] + "/src"
+    script = f"""
+import builtins
+import sys
+
+sys.path.insert(0, {source_root!r})
+blocked = ("fastapi", "langgraph", "langchain_core", "agentguard.integrations.langgraph", "agentguard.console")
+original_import = builtins.__import__
+
+def guarded_import(name, *args, **kwargs):
+    if name.startswith(blocked):
+        raise AssertionError(f"optional module loaded by core import: {{name}}")
+    return original_import(name, *args, **kwargs)
+
+builtins.__import__ = guarded_import
+import agentguard
+from agentguard.events import EventCollector, EventEnvelope, normalize_runtime_event, safe_preview
+assert agentguard.EventCollector is EventCollector
+assert not any(name.startswith(blocked) for name in sys.modules)
+"""
+    completed = subprocess.run(
+        [sys.executable, "-I", "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
