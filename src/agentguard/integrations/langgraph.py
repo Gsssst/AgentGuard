@@ -21,6 +21,8 @@ except ImportError as exc:  # pragma: no cover - exercised in subprocess tests
 
 from agentguard.domain.actions import CallTool
 from agentguard.domain.results import FailureKind, ToolResult, ToolResultStatus
+from agentguard.events.contract import EventCorrelation
+from agentguard.events.model import EventType
 from agentguard.runtime.engine import Runtime
 from agentguard.runtime.permission import PermissionDecisionKind, action_digest, redact
 from agentguard.runtime.policy import RetrySafety
@@ -168,6 +170,22 @@ class GuardedToolNode:
             return {"messages": [self._failure_message("MissingToolCalls", "no tool-calling AIMessage available")]}
         run_id = self._run_id(config)
         calls = list(getattr(ai_message, "tool_calls", ()) or ())
+        batch_id = f"langgraph-batch-{uuid.uuid4().hex}"
+        correlations = {
+            index: EventCorrelation(
+                call_id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"agentguard:{run_id}:{batch_id}:{index}")),
+                tool_call_id=self._source_tool_call_id(call),
+                batch_id=batch_id,
+            )
+            for index, call in enumerate(calls)
+        }
+        self.runtime.emit_framework_event(
+            EventType.BATCH_STARTED,
+            run_id=run_id,
+            step=0,
+            correlation=EventCorrelation(batch_id=batch_id),
+            data={"size": len(calls)},
+        )
 
         # Duplicate detection is deliberately done before dispatch.  Every
         # occurrence is failed in place, so no duplicate can invoke a tool.
@@ -183,35 +201,53 @@ class GuardedToolNode:
         pending: list[tuple[int, str, CallTool, Tool, ToolGuard]] = []
         for index, call in enumerate(calls):
             tool_call_id = self._mapped_tool_call_id(call, index)
+            correlation = correlations[index]
             if not isinstance(call, Mapping):
-                immediate[index] = (tool_call_id, self._failure_result("invalid", "InvalidToolCall"))
+                result = self._failure_result("invalid", "InvalidToolCall")
+                immediate[index] = (tool_call_id, result)
+                self._emit_rejection(result, run_id=run_id, step=index, correlation=correlation)
                 continue
 
             raw_id = call.get("id")
             if isinstance(raw_id, str) and raw_id.strip() and id_counts.get(raw_id, 0) > 1:
                 name = call.get("name") if isinstance(call.get("name"), str) else "invalid"
-                immediate[index] = (tool_call_id, self._failure_result(name, "DuplicateToolCallId"))
+                result = self._failure_result(name, "DuplicateToolCallId")
+                immediate[index] = (tool_call_id, result)
+                self._emit_rejection(result, run_id=run_id, step=index, correlation=correlation)
                 continue
 
             name = call.get("name")
             args = call.get("args")
             if not isinstance(name, str) or not name.strip():
-                immediate[index] = (tool_call_id, self._failure_result("invalid", "InvalidToolCall"))
+                result = self._failure_result("invalid", "InvalidToolCall")
+                immediate[index] = (tool_call_id, result)
+                self._emit_rejection(result, run_id=run_id, step=index, correlation=correlation)
                 continue
             name = name.strip()
             if not isinstance(args, dict):
-                immediate[index] = (tool_call_id, self._failure_result(name, "InvalidToolCall"))
+                result = self._failure_result(name, "InvalidToolCall")
+                immediate[index] = (tool_call_id, result)
+                self._emit_rejection(result, run_id=run_id, step=index, correlation=correlation)
                 continue
 
             # Existence is checked before guard configuration.  This keeps an
             # unknown name distinguishable from a known but unguarded tool.
             lang_tool = self._tools.get(name)
             if lang_tool is None:
-                immediate[index] = (tool_call_id, self._failure_result(name, "UnknownTool"))
+                result = self._failure_result(name, "UnknownTool")
+                immediate[index] = (tool_call_id, result)
+                self._emit_rejection(result, run_id=run_id, step=index, correlation=correlation)
                 continue
             guard = self._guards.get(name)
             if guard is None:
-                immediate[index] = (tool_call_id, self._failure_result(name, "PermissionDenied"))
+                result = self._failure_result(name, "PermissionDenied")
+                immediate[index] = (tool_call_id, result)
+                self._emit_permission_denied(
+                    name,
+                    run_id=run_id,
+                    step=index,
+                    correlation=correlation,
+                )
                 continue
 
             adapter_tool = Tool(
@@ -229,12 +265,42 @@ class GuardedToolNode:
                 else None
             )
             if policy_decision is not None and policy_decision.kind is PermissionDecisionKind.DENY:
-                immediate[index] = (tool_call_id, self._failure_result(name, "PermissionDenied"))
+                result = self._failure_result(name, "PermissionDenied")
+                immediate[index] = (tool_call_id, result)
+                self._emit_permission_denied(
+                    name,
+                    run_id=run_id,
+                    step=index,
+                    correlation=correlation,
+                    required_capabilities=policy_decision.required_capabilities,
+                    forbidden_capabilities=policy_decision.forbidden_capabilities,
+                    decision=policy_decision.kind.value,
+                )
             elif guard.approval_required or (
                 policy_decision is not None
                 and policy_decision.kind is PermissionDecisionKind.APPROVAL_REQUIRED
             ):
                 pending.append((index, tool_call_id, action, adapter_tool, guard))
+                digest = action_digest(
+                    action,
+                    capabilities=guard.capabilities,
+                    run_id=run_id,
+                    step=index,
+                )
+                self.runtime.emit_framework_event(
+                    EventType.APPROVAL_REQUESTED,
+                    run_id=run_id,
+                    step=index,
+                    correlation=correlation,
+                    data={
+                        "tool_name": name,
+                        "required_capabilities": sorted(guard.capabilities),
+                        "decision": PermissionDecisionKind.APPROVAL_REQUIRED.value,
+                        "action_digest": digest,
+                        "arguments": redact(action.arguments),
+                        "status": "waiting_approval",
+                    },
+                )
             else:
                 executable.append((index, action, adapter_tool))
 
@@ -244,6 +310,10 @@ class GuardedToolNode:
                 ((action, tool) for _, action, tool in executable),
                 run_id=run_id,
                 max_concurrency=self.max_concurrency,
+                step_indices={position: index for position, (index, _action, _tool) in enumerate(executable)},
+                correlation_contexts={position: correlations[index] for position, (index, _action, _tool) in enumerate(executable)},
+                batch_id=batch_id,
+                emit_batch_lifecycle=False,
             )
         by_index = {index: (self._mapped_tool_call_id(calls[index], index), result)
                     for (index, _, _), result in zip(executable, executed)}
@@ -254,21 +324,32 @@ class GuardedToolNode:
             for index in range(len(calls))
         ]
         if not pending:
+            self._emit_batch_finished(
+                run_id=run_id,
+                batch_id=batch_id,
+                size=len(calls),
+                failed=sum(result.status is not ToolResultStatus.SUCCESS for _, result in by_index.values()),
+            )
             return {"messages": output}
 
         approval_batch = build_approval_batch(
             ((index, call_id, action, guard.capabilities, guard.resources)
              for index, call_id, action, _tool, guard in pending),
             run_id=run_id,
-            batch_id=(state.get("_agentguard_batch_id") if isinstance(state, Mapping) else None),
+            batch_id=batch_id,
         )
         context = {
             "run_id": run_id,
+            "batch_id": batch_id,
             "batch": approval_batch.to_dict(),
             "pending": [
                 {
                     "input_index": index,
-                    "tool_call_id": call_id,
+                    "call_id": correlations[index].call_id,
+                    "tool_call_id": correlations[index].tool_call_id,
+                    "message_tool_call_id": call_id,
+                    "batch_id": batch_id,
+                    "run_id": run_id,
                     "tool_name": action.tool_name,
                     "arguments": dict(action.arguments),
                     "capabilities": sorted(guard.capabilities),
@@ -282,11 +363,21 @@ class GuardedToolNode:
             "immediate": {
                 str(index): {
                     "tool_call_id": self._mapped_tool_call_id(calls[index], index),
+                    "source_tool_call_id": correlations[index].tool_call_id,
+                    "call_id": correlations[index].call_id,
+                    "batch_id": batch_id,
+                    "run_id": run_id,
+                    "input_index": index,
                     "message": output[index].content,
+                    "failed": by_index[index][1].status is not ToolResultStatus.SUCCESS,
                 }
                 for index in range(len(calls)) if index in by_index
             },
             "calls_count": len(calls),
+            "failed_count": sum(
+                result.status is not ToolResultStatus.SUCCESS
+                for _, result in by_index.values()
+            ),
         }
         # A pending projection must not append placeholder ToolMessages to a
         # MessagesState.  The add_messages reducer appends returned messages;
@@ -326,11 +417,24 @@ class GuardedToolNode:
         results: dict[int, tuple[str, ToolResult]] = {}
         for item in context["pending"]:
             index = int(item["input_index"])
-            call_id = item["tool_call_id"]
+            call_id = item["message_tool_call_id"]
+            correlation = EventCorrelation(
+                call_id=item["call_id"],
+                tool_call_id=item.get("tool_call_id"),
+                batch_id=context["batch_id"],
+            )
             decision = normalized.get(call_id)
             expected = next((entry for entry in items if entry.tool_call_id == call_id), None)
             if decision is None or not decision.approved or expected is None:
                 results[index] = (call_id, self._failure_result(item["tool_name"], "PermissionDenied"))
+                self._emit_approval_denied(
+                    item,
+                    expected,
+                    decision,
+                    run_id=context["run_id"],
+                    step=index,
+                    correlation=correlation,
+                )
                 continue
             original_action = CallTool(item["tool_name"], dict(item["arguments"]))
             # Recompute from the unredacted state projection, never from the
@@ -343,11 +447,26 @@ class GuardedToolNode:
             )
             if digest != expected.action_digest:
                 results[index] = (call_id, self._failure_result(item["tool_name"], "PermissionDenied"))
+                self._emit_approval_denied(
+                    item,
+                    expected,
+                    decision,
+                    run_id=context["run_id"],
+                    step=index,
+                    correlation=correlation,
+                )
                 continue
             lang_tool = self._tools.get(item["tool_name"])
             guard = self._guards.get(item["tool_name"])
             if lang_tool is None or guard is None:
-                results[index] = (call_id, self._failure_result(item["tool_name"], "UnknownTool"))
+                result = self._failure_result(item["tool_name"], "UnknownTool")
+                results[index] = (call_id, result)
+                self._emit_rejection(
+                    result,
+                    run_id=context["run_id"],
+                    step=index,
+                    correlation=correlation,
+                )
                 continue
             approved.append((index, original_action, Tool(
                 name=item["tool_name"], function=self._invoke_langchain_tool(lang_tool),
@@ -361,14 +480,24 @@ class GuardedToolNode:
                 run_id=context["run_id"], max_concurrency=self.max_concurrency,
                 approval_context={
                     position: normalized[
-                        next(entry["tool_call_id"] for entry in context["pending"] if int(entry["input_index"]) == index)
+                        next(entry["message_tool_call_id"] for entry in context["pending"] if int(entry["input_index"]) == index)
                     ].decision
                     for position, (index, _action, _tool) in enumerate(approved)
                 },
                 step_indices={position: index for position, (index, _action, _tool) in enumerate(approved)},
+                correlation_contexts={
+                    position: EventCorrelation(
+                        call_id=next(entry["call_id"] for entry in context["pending"] if int(entry["input_index"]) == index),
+                        tool_call_id=next(entry.get("tool_call_id") for entry in context["pending"] if int(entry["input_index"]) == index),
+                        batch_id=context["batch_id"],
+                    )
+                    for position, (index, _action, _tool) in enumerate(approved)
+                },
+                batch_id=context["batch_id"],
+                emit_batch_lifecycle=False,
             )
             results.update({
-                index: (next(entry["tool_call_id"] for entry in context["pending"] if int(entry["input_index"]) == index), result)
+                index: (next(entry["message_tool_call_id"] for entry in context["pending"] if int(entry["input_index"]) == index), result)
                 for (index, _action, _tool), result in zip(approved, executed)
             })
 
@@ -384,15 +513,125 @@ class GuardedToolNode:
                     output.append(self._failure_message("PermissionDenied", "tool call was not approved", "agentguard-invalid-call-" + str(index)))
         consumed_context = dict(context)
         consumed_context["pending"] = []
+        self._emit_batch_finished(
+            run_id=context["run_id"],
+            batch_id=context["batch_id"],
+            size=int(context.get("calls_count", 0)),
+            failed=int(context.get("failed_count", 0))
+            + sum(result.status is not ToolResultStatus.SUCCESS for _, result in results.values()),
+        )
         return {"messages": output, "_agentguard_prepared": consumed_context}
 
     @staticmethod
-    def _mapped_tool_call_id(call: Any, index: int) -> str:
+    def _source_tool_call_id(call: Any) -> str | None:
         if isinstance(call, Mapping):
             value = call.get("id")
-            if isinstance(value, str) and value.strip():
+            if (
+                isinstance(value, str)
+                and value
+                and value == value.strip()
+                and len(value) <= 256
+                and not any(ord(character) < 32 for character in value)
+            ):
                 return value
-        return f"agentguard-invalid-call-{index}"
+        return None
+
+    def _emit_rejection(
+        self,
+        result: ToolResult,
+        *,
+        run_id: str,
+        step: int,
+        correlation: EventCorrelation,
+    ) -> None:
+        self.runtime.emit_framework_event(
+            EventType.TOOL_FAILED,
+            run_id=run_id,
+            step=step,
+            correlation=correlation,
+            data={
+                "tool_name": result.tool_name,
+                "error_type": result.error_type or "ToolError",
+                "error_message": "tool call was rejected before execution",
+                "failure_kind": (result.failure_kind or FailureKind.PERMANENT).value,
+                "attempts": result.attempts,
+            },
+        )
+
+    def _emit_permission_denied(
+        self,
+        tool_name: str,
+        *,
+        run_id: str,
+        step: int,
+        correlation: EventCorrelation,
+        required_capabilities: Any = (),
+        forbidden_capabilities: Any = (),
+        decision: str = "deny",
+    ) -> None:
+        self.runtime.emit_framework_event(
+            EventType.PERMISSION_DENIED,
+            run_id=run_id,
+            step=step,
+            correlation=correlation,
+            data={
+                "tool_name": tool_name,
+                "required_capabilities": sorted(required_capabilities),
+                "forbidden_capabilities": sorted(forbidden_capabilities),
+                "decision": decision,
+            },
+        )
+
+    def _emit_approval_denied(
+        self,
+        item: Mapping[str, Any],
+        expected: ApprovalItem | None,
+        decision: Any,
+        *,
+        run_id: str,
+        step: int,
+        correlation: EventCorrelation,
+    ) -> None:
+        digest = expected.action_digest if expected is not None else action_digest(
+            CallTool(item["tool_name"], dict(item["arguments"])),
+            capabilities=item.get("capabilities", ()),
+            run_id=run_id,
+            step=step,
+        )
+        actor = getattr(decision, "actor", "unknown") or "unknown"
+        if (
+            not isinstance(actor, str)
+            or actor != actor.strip()
+            or len(actor) > 512
+            or any(ord(character) < 32 for character in actor)
+        ):
+            actor = "unknown"
+        self.runtime.emit_framework_event(
+            EventType.APPROVAL_DENIED,
+            run_id=run_id,
+            step=step,
+            correlation=correlation,
+            data={
+                "tool_name": item["tool_name"],
+                "required_capabilities": sorted(item.get("capabilities", ())),
+                "actor": actor,
+                "action_digest": digest,
+                "reason": "approval was denied or invalid",
+            },
+        )
+
+    def _emit_batch_finished(self, *, run_id: str, batch_id: str, size: int, failed: int) -> None:
+        self.runtime.emit_framework_event(
+            EventType.BATCH_FINISHED,
+            run_id=run_id,
+            step=0,
+            correlation=EventCorrelation(batch_id=batch_id),
+            data={"size": size, "failed": failed},
+        )
+
+    @staticmethod
+    def _mapped_tool_call_id(call: Any, index: int) -> str:
+        return GuardedToolNode._source_tool_call_id(call) or f"agentguard-invalid-call-{index}"
 
     @staticmethod
     def _failure_result(tool_name: str, error_type: str) -> ToolResult:
