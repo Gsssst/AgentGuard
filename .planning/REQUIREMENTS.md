@@ -9,8 +9,8 @@
 
 - [ ] **OBS-01**: A developer can start a built-in deterministic Agent run and receive a stable `run_id`.
 - [ ] **OBS-02**: A developer can list recent runs with status, start time, duration, and event counts.
-- [ ] **OBS-03**: Every collected event uses a versioned envelope with `run_id`, monotonic per-run sequence, UTC timestamp, event type, status, and safe payload fields.
-- [ ] **OBS-04**: The collector represents tool calls, approvals, failures, retries, timeouts, and terminal results without exposing raw exception stacks or secrets.
+- [x] **OBS-03**: Every collected event uses a versioned envelope with `run_id`, monotonic per-run sequence, UTC timestamp, event type, status, and safe payload fields.
+- [x] **OBS-04**: The collector represents tool calls, approvals, failures, retries, timeouts, and terminal results without exposing raw exception stacks or secrets.
 
 ### Real-Time Streaming
 
@@ -38,7 +38,7 @@
 
 ### Compatibility and Evidence
 
-- [ ] **COMPAT-01**: AgentGuard core remains importable and testable without installing the console's FastAPI or frontend dependencies.
+- [x] **COMPAT-01**: AgentGuard core remains importable and testable without installing the console's FastAPI or frontend dependencies.
 - [ ] **COMPAT-02**: Backend tests cover event envelopes, JSONL persistence, SSE ordering/reconnect, queue bounds, and ingestion failures.
 - [ ] **COMPAT-03**: Frontend tests or deterministic fixtures verify run-list rendering, timeline updates, safe event details, and API error states.
 - [ ] **COMPAT-04**: Chinese and English learning notes record the event contract, deliberate failures, and known local-console limits.
@@ -79,7 +79,7 @@
 | UI-01..03 | Phase 14 | Pending |
 | DEMO-01 | Phase 13 | Pending |
 | INGEST-01..02 | Phase 13 | Pending |
-| COMPAT-01 | Phase 11 | Pending |
+| COMPAT-01 | Phase 11 | Complete |
 | COMPAT-02 | Phase 13 | Pending |
 | COMPAT-03..04 | Phase 14 | Pending |
 
