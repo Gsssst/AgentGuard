@@ -8,6 +8,7 @@ import pytest
 
 from agentguard.events.collector import EventCollector, RunSummaryStatus
 from agentguard.events.model import EventType, RuntimeEvent
+from agentguard.events.normalize import normalize_runtime_event
 
 
 def _event(
@@ -273,3 +274,16 @@ def test_validation_and_internal_failures_are_safe_and_fail_open(monkeypatch: py
     assert healthy.emit(_event(EventType.RUN_STARTED)) is None
     assert healthy.get_events("run-1") == ()
     assert "super-secret" not in repr(healthy.diagnostics())
+
+
+def test_normalizer_can_reenter_read_api_without_deadlocking() -> None:
+    collector: EventCollector
+
+    def reentrant_normalizer(event: RuntimeEvent):  # type: ignore[no-untyped-def]
+        assert collector.get_run(event.run_id) is None
+        return normalize_runtime_event(event)
+
+    collector = EventCollector(normalizer=reentrant_normalizer)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(collector.accept, _event(EventType.RUN_STARTED))
+        assert future.result(timeout=1).is_accepted
