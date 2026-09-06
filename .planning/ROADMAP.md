@@ -19,7 +19,7 @@
 **Goal:** Define a versioned, safe event envelope and collect Runtime/adapter events into a process-local run index.
 **Requirements:** OBS-03, OBS-04, COMPAT-01
 **Depends on:** v0.3 Runtime and adapter events
-**Plan progress:** 2/4 complete
+**Plan progress:** 3/4 complete
 
 **Success criteria:**
 
