@@ -14,6 +14,8 @@ import hashlib
 import json
 from typing import Any
 
+from agentguard._safety import safe_preview
+
 
 class Capability(StrEnum):
     """The fixed capability vocabulary supported by the first version."""
@@ -231,35 +233,10 @@ def action_digest(action: Any, *, capabilities: Iterable[str], run_id: str, step
     )
 
 
-_DEFAULT_SENSITIVE_MARKERS = (
-    "password",
-    "token",
-    "secret",
-    "api_key",
-    "access_key",
-    "private_key",
-    "authorization",
-)
-
-
 def redact(value: Any, *, sensitive_fields: Iterable[str] = ()) -> Any:
-    """Recursively project values for audit events without mutating input."""
+    """Return the legacy redacted value through the bounded safety boundary."""
 
-    markers = tuple(marker.lower() for marker in (*_DEFAULT_SENSITIVE_MARKERS, *sensitive_fields))
-    if isinstance(value, dict):
-        result: dict[str, Any] = {}
-        for key, item in value.items():
-            key_text = str(key)
-            if any(marker in key_text.lower() for marker in markers):
-                result[key] = "[REDACTED]"
-            else:
-                result[key] = redact(item, sensitive_fields=sensitive_fields)
-        return result
-    if isinstance(value, list):
-        return [redact(item, sensitive_fields=sensitive_fields) for item in value]
-    if isinstance(value, tuple):
-        return tuple(redact(item, sensitive_fields=sensitive_fields) for item in value)
-    return value
+    return safe_preview(value, sensitive_fields=sensitive_fields).value
 
 
 redact_arguments = redact
